@@ -1,0 +1,1293 @@
+
+#### NRF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nrf
+  namespace: nrprediger
+  labels:
+    app: nrf
+    version: 2.7.6
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nrf
+  template:
+    metadata:
+      labels:
+        app: nrf
+        version: 2.7.6
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: petshopboys
+      #   nodetype: server
+      containers:
+        - name: nrf
+          image: gradiant/open5gs:2.7.6
+          ports:
+            - name: http2-8080
+              protocol: TCP
+              containerPort: 8080
+          volumeMounts:
+            - name: nrf-config
+              mountPath: /open5gs/config-map/nrf.yaml
+              subPath: "nrf.yaml"
+          command: ["open5gs-nrfd", "-c", "/open5gs/config-map/nrf.yaml"]
+      volumes:
+        - name: nrf-config
+          configMap:
+            name: nrf
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nrf
+  namespace: nrprediger
+  labels:
+    app: nrf
+spec:
+  selector:
+    app: nrf
+  ports:
+    - name: http2-8080
+      protocol: TCP
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nrf
+  namespace: nrprediger
+  labels:
+    app: nrf
+data:
+  nrf.yaml: |
+    logger:
+      path:
+        file: /opt/open5gs/var/log/open5gs/nrf.log
+
+    global:
+      max:
+        ue: 5000  # The number of UE can be increased depending on memory size.
+    #    peer: 64
+
+    sbi:
+      server:
+        no_tls: true
+      client:
+        no_tls: true
+
+    nrf:
+      serving: # 5G roaming requires PLMN in NRF
+      - plmn_id:
+          mcc: 999
+          mnc: 70
+      sbi:
+        server:
+        - dev: eth0
+          port: 8080
+          advertise: nrf
+
+    parameter:
+    max:
+    time:
+
+### AMF
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: amf
+  namespace: nrprediger
+  labels:
+    app: amf
+    version: 2.7.6
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: amf
+  template:
+    metadata:
+      labels:
+        app: amf
+        version: 2.7.6
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: petshopboys
+      #   nodetype: server
+      containers:
+        - name: amf
+          image: gradiant/open5gs:2.7.6
+          ports:
+            - name: http2-8080
+              protocol: TCP
+              containerPort: 8080
+            - name: sctp-38412
+              protocol: SCTP
+              containerPort: 38412
+            - name: tcp-9090
+              protocol: TCP
+              containerPort: 9090
+          volumeMounts:
+            - name: amf-config
+              mountPath: /open5gs/config-map/amf.yaml
+              subPath: "amf.yaml"
+          command: ["open5gs-amfd", "-c", "/open5gs/config-map/amf.yaml"]
+      volumes:
+        - name: amf-config
+          configMap:
+            name: amf
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: amf
+  namespace: nrprediger
+  labels:
+    app: amf
+spec:
+  selector:
+    app: amf
+  ports:
+    - name: http2-8080
+      protocol: TCP
+      port: 8080
+      targetPort: 8080
+    - name: sctp-38412
+      protocol: SCTP
+      targetPort: 38412
+      port: 38412
+    - name: tcp-9090
+      protocol: TCP
+      port: 9090
+      targetPort: 9090
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: amf
+  namespace: nrprediger
+  labels:
+    app: amf
+data:
+  amf.yaml: |
+    logger:
+      level: info
+      path:
+        file: /opt/open5gs/var/log/open5gs/amf.log
+
+    global:
+      max:
+        ue: 5000  # The number of UE can be increased depending on memory size.
+    #    peer: 64
+
+    sbi:
+      server:
+        no_tls: true
+      client:
+        no_tls: true
+
+    amf:
+      sbi:
+        server:
+        - dev: eth0
+          port: 8080
+          advertise: amf
+        client:
+          nrf:
+            - uri: http://nrf:8080
+      ngap: 
+        server:
+        - dev: eth0
+
+      guami:
+        - plmn_id:
+            mcc: 999
+            mnc: 70
+          amf_id:
+            region: 2
+            set: 1
+      tai:
+        - plmn_id:
+            mcc: 999
+            mnc: 70
+          tac: 1
+
+      plmn_support:
+        - plmn_id:
+            mcc: 999
+            mnc: 70
+          s_nssai:
+            - sst: 1
+            - sst: 1
+              sd: 000001
+      security:
+          integrity_order : [ NIA2, NIA1, NIA0 ]
+          ciphering_order : [ NEA0, NEA1, NEA2 ]
+      network_name:
+          full: Open5GS
+      amf_name: amf
+      time:
+        t3512:
+          value: 540 # 9 minutes * 60 = 540 seconds
+
+      metrics:
+        server:
+          - dev: eth0
+            port: 9090
+
+    nrf:
+      sbi:
+        - name: nrf
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: amf
+  namespace: nrprediger
+  labels:
+    app: amf
+spec:
+  selector:
+    matchLabels:
+      app: amf
+  endpoints:
+  - interval: 30s
+    port: tcp-9090
+
+### SMF
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: smf
+  namespace: nrprediger
+  labels:
+    app: smf
+spec:
+  selector:
+    app: smf
+  ports:
+    - name: http2-8080
+      protocol: TCP
+      port: 8080
+      targetPort: 8080
+    - name: udp-2152
+      protocol: UDP
+      port: 2152
+      targetPort: 2152
+    - name: udp-2123
+      protocol: UDP
+      port: 2123
+      targetPort: 2123
+    - name: udp-8805
+      protocol: UDP
+      port: 8805
+      targetPort: 8805
+    - name: tcp-9090
+      protocol: TCP
+      port: 9090
+      targetPort: 9090
+---
+apiVersion: apps/v1 
+kind: Deployment
+metadata:
+  name: smf
+  namespace: nrprediger
+  labels:
+    app: smf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: smf
+  template:
+    metadata:
+      labels:
+        app: smf
+        version: 2.7.6
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: petshopboys
+      #   nodetype: server
+      containers:
+        - name: smf
+          image: gradiant/open5gs:2.7.6
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          ports:
+            - name: http2-8080
+              protocol: TCP
+              containerPort: 8080
+            - name: udp-2152
+              protocol: UDP
+              containerPort: 2152
+            - name: udp-2123
+              protocol: UDP
+              containerPort: 2123
+            - name: udp-8805
+              protocol: UDP
+              containerPort: 8805
+            - name: tcp-9090
+              protocol: TCP
+              containerPort: 9090
+          volumeMounts:
+            - name: smf-config
+              mountPath: /open5gs/config-map/smf.yaml
+              subPath: "smf.yaml"
+          command: ["open5gs-smfd", "-c", "/open5gs/config-map/smf.yaml"]
+          command:
+            - /bin/sh
+            - -c
+            - |
+              # 1. Lê o config original (read-only), substitui a variável e escreve em um novo arquivo em /tmp (gravável)
+              sed "s/__POD_IP__/$POD_IP/g" /open5gs/config-map/smf.yaml > /tmp/smf_dynamic.yaml
+
+              # 2. Inicia o SMF usando o novo arquivo de configuração que contém o IP correto
+              open5gs-smfd -c /tmp/smf_dynamic.yaml
+      volumes:
+        - name: smf-config
+          configMap:
+            name: smf
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: smf
+  namespace: nrprediger
+  labels:
+    app: smf
+data:
+  smf.yaml: |
+    logger:
+      level: info
+      path:
+        file: /opt/open5gs/var/log/open5gs/smf.log
+
+    global:
+      max:
+        ue: 5000
+
+    sbi:
+      server:
+        no_tls: true
+      client:
+        no_tls: true
+
+    smf:
+      sbi:
+        server:
+          - dev: eth0
+            port: 8080
+            advertise: smf
+
+        client:
+          nrf:
+            - uri: http://nrf:8080
+      pfcp:
+        server:
+          - dev: eth0
+        client:
+          upf:
+            - address: upf
+              dnn: [internet, slice01]
+      gtpc:
+        server:
+          - dev: eth0
+      gtpu:
+        server:
+          - dev: eth0
+      metrics:
+        server:
+          address: 0.0.0.0
+          port: 9090
+      session:
+        - subnet: 172.16.0.0/16
+          gateway: 172.16.0.1
+          dnn: internet
+        - subnet: 172.17.0.0/16
+          gateway: 172.17.0.1
+          dnn: slice01
+      dns:
+      - 10.96.0.10
+      mtu: 1370
+      ctf:
+        enabled: no
+      info:
+        - s_nssai:
+          - sst: 1
+            sd: 000001
+            dnn: [internet, slice01]
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: smf
+  namespace: nrprediger
+  labels:
+    app: smf
+spec:
+  selector:
+    matchLabels:
+      app: smf
+  endpoints:
+  - interval: 30s
+    port: tcp-9090
+
+### UPF
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: upf-gtp
+  namespace: nrprediger
+  labels:
+    app: upf
+spec:
+  clusterIP: None
+  selector:
+    app: upf
+  ports:
+    - name: udp-2152
+      protocol: UDP
+      port: 2152
+      targetPort: 2152
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: upf
+  namespace: nrprediger
+  labels:
+    app: upf
+spec:
+  selector:
+    app: upf
+  ports:
+    - name: http2-8080
+      protocol: TCP
+      port: 8080
+      targetPort: 8080
+    - name: udp-2152
+      protocol: UDP
+      port: 2152
+      targetPort: 2152
+    - name: udp-8805
+      protocol: UDP
+      port: 8805
+      targetPort: 8805
+    - name: tcp-9090
+      protocol: TCP
+      port: 9090
+      targetPort: 9090
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: upf
+  namespace: nrprediger
+  labels:
+    app: upf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: upf
+  template:
+    metadata:
+      labels:
+        app: upf
+        version: 2.7.6
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: petshopboys
+      #       kubernetes.io/arch: amd64
+      containers:
+        - name: upf
+          image: gradiant/open5gs:2.7.6
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          ports:
+            - name: http2-8080
+              protocol: TCP
+              containerPort: 8080
+            - name: udp-2152
+              protocol: UDP
+              containerPort: 2152
+            - name: udp-8805
+              protocol: UDP
+              containerPort: 8805
+            - name: tcp-9090
+              protocol: TCP
+              containerPort: 9090
+          securityContext:
+            privileged: true
+            runAsUser: 0
+            capabilities:
+              add: ["NET_ADMIN", "SYS_MODULE"]
+          volumeMounts:
+            - name: upf-config
+              mountPath: /open5gs/config-map/upf.yaml
+              subPath: "upf.yaml"
+            - name: "dev-net-tun"
+              mountPath: "/dev/net/tun" # Needed for GTP tunnel
+            - name: upf-config
+              mountPath: /bin/entrypoint.sh
+              subPath: entrypoint.sh
+          command: ["/bin/entrypoint.sh"]
+      volumes:
+        - name: upf-config
+          configMap:
+            name: upf
+            defaultMode: 0777
+        - name: dev-net-tun
+          hostPath:
+            path: /dev/net/tun
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: upf
+  namespace: nrprediger
+  labels:
+    app: upf
+data:
+  upf.yaml: |-
+    logger:
+      level: info
+      path:
+        file: /opt/open5gs/var/log/open5gs/upf.log
+
+    global:
+      max:
+        ue: 5000
+
+    sbi:
+      server:
+        no_tls: true
+      client:
+        no_tls: true
+    upf:
+      pfcp:
+        server:
+          - dev: eth0
+        #heartbeat:
+        #  enabled: false
+            advertise: upf
+        client:
+        #  smf:
+        #    - address: smf
+      gtpu:
+        server:
+          - dev: eth0
+            advertise: upf
+      metrics:
+        server:
+          - dev: eth0
+            port: 9090
+      session:
+        - subnet: 172.16.0.0/16
+          gateway: 172.16.0.1
+          dnn: internet
+          dev: ogstun
+        - subnet: 172.17.0.0/16
+          gateway: 172.17.0.1
+          dnn: slice01
+          dev: slice01
+
+  entrypoint.sh: |-
+    #!/bin/bash
+    set -e
+
+    echo "Executing k8s customized entrypoint.sh"
+    #echo "Creating net device {{ .dev }}"
+    if grep "ogstun" /proc/net/dev > /dev/null; then
+      echo "[WARNING] Net device ogstun already exists!"
+      ip addr add 172.16.0.1/16 dev ogstun || true
+      ip link set ogstun up
+    else 
+      echo "[INFO] Create device ogstun!"
+      ip tuntap add name ogstun mode tun
+      ip addr add 172.16.0.1/16 dev ogstun || true
+      ip link set ogstun up
+    fi
+
+    # echo "Config tun"
+    # ip tuntap add name ogstun mode tun
+    # ip addr add 192.168.0.1/16 dev ogstun 
+    # ip link set ogstun up
+
+    if grep "slice01" /proc/net/dev > /dev/null; then
+      echo "[WARNING] Net device slice01 already exists!"
+      ip addr add 172.17.0.1/16 dev slice01 || true
+      ip link set slice01 up
+    else 
+      echo "[INFO] Create device slice01 !"
+      ip tuntap add name slice01 mode tun
+      ip addr add 172.17.0.1/16 dev slice01 || true
+      ip link set slice01 up
+    fi
+
+    echo "[INFO] Config sysctl"
+    sysctl -w net.ipv4.ip_forward=1
+    sysctl -w net.ipv6.conf.all.forwarding=1
+
+    echo "Enable NAT"
+    iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+
+    open5gs-upfd -c /open5gs/config-map/upf.yaml
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: upf
+  namespace: nrprediger
+  labels:
+    app: upf
+spec:
+  selector:
+    matchLabels:
+      app: upf
+  endpoints:
+  - interval: 30s
+    port: tcp-9090
+
+### BSF
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bsf
+  namespace: nrprediger
+  labels:
+    app: bsf
+data:
+  bsf.yaml: |
+    db_uri: mongodb://mongo/open5gs
+    logger:
+      level: info
+      
+      file:
+        path: /opt/open5gs/var/log/open5gs/bsf.log
+
+    global:
+      max:
+        ue: 5000  # The number of UE can be increased depending on memory size.
+        #peer: 128
+
+    bsf:
+      sbi:
+        server:
+          - dev: eth0
+            port: 8080
+            advertise: bsf
+        client:
+          nrf:
+            - uri: http://nrf:8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bsf
+  namespace: nrprediger
+  labels:
+    app: bsf
+spec:
+  selector:
+    app: bsf
+  ports:
+    - name: http2-8080
+      protocol: TCP
+      port: 8080
+      targetPort: 8080
+---    
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bsf
+  namespace: nrprediger
+  labels:
+    app: bsf
+    version: 2.7.6
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bsf
+  template:
+    metadata: 
+      labels:
+        app: bsf
+        version: 2.7.6
+    spec:  
+      nodeSelector:
+        kubernetes.io/hostname: petshopboys
+      #   nodetype: server
+      #       kubernetes.io/arch: amd64
+      containers:
+        - name: bsf
+          image: gradiant/open5gs:2.7.6
+          ports:
+            - containerPort: 8080
+
+          volumeMounts:
+            - name: bsf-config
+              mountPath: /open5gs/config-map/bsf.yaml
+              subPath: "bsf.yaml"
+
+          command: ["open5gs-bsfd", "-c", "/open5gs/config-map/bsf.yaml"]
+      volumes:
+        - name: bsf-config
+          configMap:
+            name: bsf
+
+### AUSF
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ausf
+  namespace: nrprediger
+  labels:
+    app: ausf
+spec:
+  selector:
+    app: ausf
+  ports:
+    - name: http2-8080
+      protocol: TCP
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ausf
+  namespace: nrprediger
+  labels:
+    app: ausf
+    version: 2.7.6
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ausf
+  template:
+    metadata:
+      labels:
+        app: ausf
+        version: 2.7.6
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: petshopboys
+      #   nodetype: server
+      #       kubernetes.io/arch: amd64
+      containers:
+        - name: ausf
+          image: gradiant/open5gs:2.7.6
+          ports:
+            - name: http2-8080
+              protocol: TCP
+              containerPort: 8080
+          volumeMounts:
+            - name: ausf-config
+              mountPath: /open5gs/config-map/ausf.yaml
+              subPath: "ausf.yaml"
+          command: ["open5gs-ausfd", "-c", "/open5gs/config-map/ausf.yaml"]
+      volumes:
+        - name: ausf-config
+          configMap:
+            name: ausf
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ausf
+  namespace: nrprediger
+  labels:
+    app: ausf
+data:
+  ausf.yaml: |
+    logger:
+      level: info
+
+      path:
+        file: /opt/open5gs/var/log/open5gs/ausf.log
+      
+    global:
+      max:
+        ue: 5000  # The number of UE can be increased depending on memory size.
+    #    peer: 64
+
+    sbi:
+      server:
+        no_tls: true
+      client:
+        no_tls: true
+
+    ausf:
+      sbi:
+        server:
+            - dev: eth0
+              port: 8080
+              advertise: ausf
+        client:
+          nrf:
+            - uri: http://nrf:8080
+          
+    nrf:
+        sbi:
+          - name: nrf
+
+### UDM
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: udm
+  namespace: nrprediger
+  labels:
+    app: udm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: udm
+  template:
+    metadata:
+      labels:
+        app: udm
+        version: 2.7.6
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: petshopboys
+      #   nodetype: server
+      containers:
+        - name: udm
+          image: gradiant/open5gs:2.7.6
+          ports:
+            - name: http2-8080
+              protocol: TCP
+              containerPort: 8080
+          volumeMounts:
+            - name: udm-config
+              mountPath: /open5gs/config-map/udm.yaml
+              subPath: "udm.yaml"
+          command: ["open5gs-udmd", "-c", "/open5gs/config-map/udm.yaml"]
+      volumes:
+        - name: udm-config
+          configMap:
+            name: udm
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: udm
+  namespace: nrprediger
+  labels:
+    app: udm
+spec:
+  selector:
+    app: udm
+  ports:
+    - name: http2-8080
+      protocol: TCP
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: udm
+  namespace: nrprediger
+  labels:
+    app: udm
+data:
+  udm.yaml: |
+    logger:
+      path:
+        file: /opt/open5gs/var/log/open5gs/udm.log
+    #  level: info   # fatal|error|warn|info(default)|debug|info
+
+    global:
+      max:
+        ue: 5000 # The number of UE can be increased depending on memory size.
+    #    peer: 64
+    
+    sbi:
+      server:
+        no_tls: true
+      client:
+        no_tls: true
+
+    udm:
+      # hnet:
+      #   - id: 1
+      #     scheme: 1
+      #     key: /etc/open5gs/hnet/curve25519-1.key
+      #   - id: 2
+      #     scheme: 2
+      #     key: /etc/open5gs/hnet/secp256r1-2.key
+      #   - id: 3
+      #     scheme: 1
+      #     key: /etc/open5gs/hnet/curve25519-3.key
+      #   - id: 4
+      #     scheme: 2
+      #     key: /etc/open5gs/hnet/secp256r1-4.key
+      #   - id: 5
+      #     scheme: 1
+      #     key: /etc/open5gs/hnet/curve25519-5.key
+      #   - id: 6
+      #     scheme: 2
+      #     key: /etc/open5gs/hnet/secp256r1-6.key
+      sbi:
+        server:
+          - dev: eth0
+            port: 8080
+            advertise: udm
+        client:
+          nrf:
+            - uri: http://nrf:8080
+
+    nrf:
+      sbi:
+        - name: nrf
+
+### UDR 
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: udr
+  namespace: nrprediger
+  labels:
+    app: udr
+spec:
+  selector:
+    app: udr
+  ports:
+    - name: http2-8080
+      protocol: TCP
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: udr
+  namespace: nrprediger
+  labels:
+    app: udr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: udr
+  template:
+    metadata:
+      labels:
+        app: udr
+        version: 2.7.6
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: petshopboys
+      #   nodetype: server
+      containers:
+        - name: udr
+          image: gradiant/open5gs:2.7.6
+          ports:
+            - name: http2-8080
+              protocol: TCP
+              containerPort: 8080
+          volumeMounts:
+            - name: udr-config
+              mountPath: /open5gs/config-map/udr.yaml
+              subPath: "udr.yaml"
+          command: ["open5gs-udrd", "-c", "/open5gs/config-map/udr.yaml"]
+      volumes:
+        - name: udr-config
+          configMap:
+            name: udr
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: udr
+  namespace: nrprediger
+  labels:
+    app: udr
+data:
+  udr.yaml: |
+    
+    db_uri: mongodb://mongo/open5gs
+    
+    logger:
+      path:
+        file: /opt/open5gs/var/log/open5gs/udr.log
+    
+    global:
+      max:
+        ue: 5000  # The number of UE can be increased depending on memory size.
+    #    peer: 64
+    
+    sbi:
+      server:
+        no_tls: true
+      client:
+        no_tls: true
+
+    udr:
+      sbi:
+        server:
+          - dev: eth0
+            port: 8080
+            advertise: udr
+        client:
+          nrf:
+            - uri: http://nrf:8080
+
+    nrf:
+      sbi:
+        - name: nrf
+### NSSF
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nssf
+  namespace: nrprediger
+  labels:
+    app: nssf
+spec:
+  selector:
+    app: nssf
+  ports:
+    - name: http2-8080
+      protocol: TCP
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nssf
+  namespace: nrprediger
+  labels:
+    app: nssf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nssf
+  template:
+    metadata:
+      labels:
+        app: nssf
+        version: 2.7.6
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: petshopboys
+      #   nodetype: server
+      containers:
+        - name: nssf
+          image: gradiant/open5gs:2.7.6
+          ports:
+            - name: http2-8080
+              protocol: TCP
+              containerPort: 8080
+          volumeMounts:
+            - name: nssf-config
+              mountPath: /open5gs/config-map/nssf.yaml
+              subPath: "nssf.yaml"
+          command: ["open5gs-nssfd", "-c", "/open5gs/config-map/nssf.yaml"]
+      volumes:
+        - name: nssf-config
+          configMap:
+            name: nssf
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nssf
+  namespace: nrprediger
+  labels:
+    app: nssf
+data:
+  nssf.yaml: |
+    logger:
+      path:
+        file: /opt/open5gs/var/log/open5gs/nssf.log
+    
+    global:
+      max:
+        ue: 5000  # The number of UE can be increased depending on memory size.
+    #    peer: 64
+
+    sbi:
+      server:
+        no_tls: true
+      client:
+        no_tls: true
+
+    nssf:
+      sbi:
+        server:
+          - dev: eth0
+            port: 8080
+            advertise: nssf
+        client:
+          nrf:
+            - uri: http://nrf:8080
+          nsi:
+            - uri: http://nrf:8080
+              s_nssai:
+                sst: 1
+            - uri: http://nrf:8080
+              s_nssai:
+                sst: 1
+                sd: 000001
+            - uri: http://nrf:8080
+              s_nssai:
+                sst: 2
+                sd: 2
+            - uri: http://nrf:8080
+              s_nssai:
+                sst: 3
+                sd: 3
+            - uri: http://nrf:8080
+              s_nssai:
+                sst: 4
+                sd: 4
+### PCF
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pcf
+  namespace: nrprediger
+  labels:
+    app: pcf
+spec:
+  selector:
+    app: pcf
+  ports:
+    - name: http2-8080
+      protocol: TCP
+      port: 8080
+      targetPort: 8080
+    - name: tcp-9090
+      protocol: TCP
+      port: 9090
+      targetPort: 9090
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pcf
+  namespace: nrprediger
+  labels:
+    app: pcf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pcf
+  template:
+    metadata:
+      labels:
+        app: pcf
+        version: 2.7.6
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: petshopboys
+      #   nodetype: server
+      containers:
+        - name: pcf
+          image: gradiant/open5gs:2.7.6
+          ports:
+            - name: http2-8080
+              protocol: TCP
+              containerPort: 8080
+            - name: tcp-9090
+              protocol: TCP
+              containerPort: 9090
+          volumeMounts:
+            - name: pcf-config
+              mountPath: /open5gs/config-map/pcf.yaml
+              subPath: "pcf.yaml"
+          command: ["open5gs-pcfd", "-c", "/open5gs/config-map/pcf.yaml"]
+      volumes:
+        - name: pcf-config
+          configMap:
+            name: pcf
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pcf
+  namespace: nrprediger
+  labels:
+    app: pcf
+data:
+  pcf.yaml: |
+    db_uri: mongodb://mongo/open5gs
+    
+    logger:
+      path:
+        file: /opt/open5gs/var/log/open5gs/pcf.log
+
+    global:
+      max:
+        ue: 5000  # The number of UE can be increased depending on memory size.
+    #    peer: 64
+
+    sbi:
+      server:
+        no_tls: true
+      client:
+        no_tls: true
+
+    pcf:
+      sbi:
+        server:
+          - dev: eth0
+            port: 8080
+            advertise: pcf
+        client:
+          nrf:
+            - uri: http://nrf:8080
+      metrics:
+        server:
+          - dev: eth0
+            port: 9090
+    nrf:
+      sbi:
+        - name: nrf
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: pcf
+  namespace: nrprediger
+  labels:
+    app: pcf
+spec:
+  selector:
+    matchLabels:
+      app: pcf
+  endpoints:
+    - interval: 30s
+      port: tcp-9090
+
+

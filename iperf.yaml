@@ -1,0 +1,52 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: iperf01
+  namespace: nrprediger
+  labels:
+    app: iperf01
+spec:
+  selector:
+    app: iperf01
+  ports:
+    - name: tcp-5001
+      protocol: TCP
+      port: 5001
+      targetPort: 5001
+    - name: udp-5001
+      protocol: UDP
+      port: 5001
+      targetPort: 5001
+---    
+apiVersion: apps/v1 # for versions before 1.9.0 use apps/v1beta2
+kind: Deployment
+metadata:
+  name: iperf01
+  namespace: nrprediger
+  labels:
+    app: iperf01
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: iperf01
+  template:
+    metadata:   
+      labels:
+        app: iperf01
+    spec:        
+      nodeSelector:
+        kubernetes.io/hostname: petshopboys    
+      # nodeSelector:
+      #   kubernetes.io/arch: amd64
+      #   nodetype: server
+      containers:       
+        - name: iperf-tcp
+          image: maikovisky/iperf:latest
+          ports:
+            - containerPort: 5001
+              protocol: TCP 
+            - containerPort: 5001
+              protocol: UDP
+          command: ["/bin/iperf", "-s",  "-i", "15"]

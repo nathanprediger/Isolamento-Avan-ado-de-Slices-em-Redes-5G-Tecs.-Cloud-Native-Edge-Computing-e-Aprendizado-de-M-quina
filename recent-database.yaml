@@ -1,0 +1,86 @@
+### OPEN5GS-DBCTL
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dbctl
+  namespace: nrprediger
+spec:
+  selector:
+    matchLabels:
+      app: dbctl
+  template:
+    metadata:
+      labels:
+        app: dbctl
+        version: 0.10.3
+    spec:
+      # nodeSelector:
+      #   nodetype: server
+      containers:
+      - image: gradiant/open5gs-dbctl:0.10.3
+        name: dbctl
+        command: ['sleep', 'infinity']
+        env:
+        - name: DB_URI
+          value: "mongodb://mongo/open5gs"
+---
+### MONGODB
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongodb
+  namespace: nrprediger
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 100Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongo
+  namespace: nrprediger
+spec:
+  ports:
+  - port: 27017
+    name: mongo-open5gs-27017
+  selector:
+    app: mongodb
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongodb
+  namespace: nrprediger
+spec:
+  selector:
+    matchLabels:
+      app: mongodb
+  
+  template:
+    metadata:
+      labels:
+        app: mongodb
+        version: v4.4
+    spec:
+      # nodeSelector:
+      #   nodetype: server
+      #   kubernetes.io/hostname: petshopboys
+      containers:
+      - image: mongo
+        imagePullPolicy: IfNotPresent
+        name: mongodb
+        ports:
+        - containerPort: 27017
+          name: mongodb
+        volumeMounts:
+        - name: mongodb-persistent-storage
+          mountPath: /data
+      volumes:
+      - name: mongodb-persistent-storage
+        persistentVolumeClaim:
+          claimName: mongodb
+---
