@@ -1,0 +1,239 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ueransim-config1
+  namespace: nrprediger
+data:
+  # Configuração para o gNB
+  gnb.yaml: |
+    mcc: '999'
+    mnc: '70'
+    nci: '0x000000010'
+    idLength: 32
+    tac: 1
+    linkIp: '0.0.0.0'
+    gtpIp: 'gnb'
+    ngapIp: '0.0.0.0'
+    name: 'k8s-gnb-1'
+    
+
+    # Conecta ao AMF usando o nome do serviço do Kubernetes
+    amfConfigs:
+      - address: amf  # <--- MÁGICA DO K8s DNS!
+        port: 38412
+
+    # Lista de slices
+    slices:
+      - sst: 1
+        sd: '000001'
+        
+    ignoreStreamIds: true
+
+    # O gNB escuta em seu próprio IP de pod
+    gnbConnections:
+      - name: gnb-n2
+        protocol: sctp
+        address: 0.0.0.0
+        port: 38412
+      - name: gnb-n3
+        protocol: udp
+        address: 0.0.0.0
+        port: 2152
+
+  # Configuração para a UE
+  ue.yaml: |
+    # IMSI number of the UE. IMSI = [MCC|MNC|MSISDN] (In total 15 digits)
+    supi: 'imsi-999700000000001'
+    # Mobile Country Code value of HPLMN
+    mcc: '999'
+    # Mobile Network Code value of HPLMN (2 or 3 digits)
+    mnc: '70'
+    # SUCI Protection Scheme : 0 for Null-scheme, 1 for Profile A and 2 for Profile B
+    protectionScheme: 0
+    # Home Network Public Key for protecting with SUCI Profile A
+    homeNetworkPublicKey: '5a8d38864820197c3394b92613b20b91633cbd897119273bf8e4a6f4eec0a650'
+    # Home Network Public Key ID for protecting with SUCI Profile A
+    homeNetworkPublicKeyId: 1
+    # Routing Indicator
+    routingIndicator: '0000'
+
+    # Permanent subscription key
+    key: '465B5CE8B199B49FAA5F0A2EE238A6BC'
+    # Operator code (OP or OPC) of the UE
+    op: 'E8ED289DEBA952E4283B54E88E6183CA'
+    # This value specifies the OP type and it can be either 'OP' or 'OPC'
+    opType: 'OPC'
+    # Authentication Management Field (AMF) value
+    amf: '8000'
+
+    # Network mask used for the UE's TUN interface to define the subnet size  
+    tunNetmask: '255.255.255.0'
+
+    # List of gNB IP addresses for Radio Link Simulation
+    gnbSearchList:
+      - 127.0.0.1
+
+    # UAC Access Identities Configuration
+    uacAic:
+      mps: false
+      mcs: false
+
+    # UAC Access Control Class
+    uacAcc:
+      normalClass: 0
+      class11: false
+      class12: false
+      class13: false
+      class14: false
+      class15: false
+
+    # Initial PDU sessions to be established
+    sessions:
+      - type: 'IPv4'
+        apn: 'slice01'
+        dnn: 'slice01'
+        slice:
+          sst: 1
+          sd: 000001
+
+    # Configured NSSAI for this UE by HPLMN
+    configured-nssai:
+      - sst: 1
+        sd: 000001
+
+    # Default Configured NSSAI for this UE
+    default-nssai:
+      - sst: 1
+        sd: 000001
+
+    # Supported integrity algorithms by this UE
+    integrity:
+      IA1: true
+      IA2: true
+      IA3: true
+
+    # Supported encryption algorithms by this UE
+    ciphering:
+      EA1: true
+      EA2: true
+      EA3: true
+
+    # Integrity protection maximum data rate for user plane
+    integrityMaxRate:
+      uplink: 'full'
+      downlink: 'full'
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dash-5g-client-slice01
+  namespace: nrprediger
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dash-5g-slice01
+  template:
+    metadata:
+      labels:
+        app: dash-5g-slice01
+      annotations:
+        qos.projectcalico.org/ingressBandwidth: 100k
+    spec:
+      # nodeSelector:
+      #   kubernetes.io/hostname: petshopboys
+      volumes:
+        - name: ueransim-config-volume
+          configMap:
+            name: ueransim-config1
+        - name: dev-net-tun
+          hostPath:
+            path: /dev/net/tun
+      containers:
+        # ---------------------------------------------------
+        # 1. GNB (Torre 5G)
+        # ---------------------------------------------------
+        - name: gnb
+          image: free5gc/ueransim:latest
+          securityContext:
+            capabilities:
+              add: ["NET_ADMIN"]
+          env:
+            - name: MY_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          # Script original para configurar o IP do GNB dinamicamente
+          command:
+            - "/bin/bash"
+            - "-c"
+            - |
+              cp /etc/ueransim/gnb.yaml config/gnb.yaml && \
+              sed -i "s/gtpIp: 'gnb'/gtpIp: '$MY_POD_IP'/g" config/gnb.yaml && \
+              echo "Iniciando gNB..." && \
+              ./nr-gnb -c config/gnb.yaml
+          volumeMounts:
+            - name: ueransim-config-volume
+              mountPath: /etc/ueransim/gnb.yaml
+              subPath: gnb.yaml
+            - name: dev-net-tun
+              mountPath: /dev/net/tun
+
+        # ---------------------------------------------------
+        # 2. UE (Modem 5G - Slice 01)
+        # ---------------------------------------------------
+        - name: ue
+          image: free5gc/ueransim:latest
+          securityContext:
+            privileged: true # Necessário para criar interface de rede
+            capabilities:
+              add: ["NET_ADMIN"]
+          # ATENÇÃO: Aqui rodamos o UE de verdade em vez de sleep infinity
+          command: ["./nr-ue", "-c", "/etc/ueransim/ue.yaml"]
+          volumeMounts:
+            - name: ueransim-config-volume
+              mountPath: /etc/ueransim/ue.yaml
+              subPath: ue.yaml
+            - name: dev-net-tun
+              mountPath: /dev/net/tun
+
+        # ---------------------------------------------------
+        # 3. DASH CLIENT (Vídeo Player)
+        # ---------------------------------------------------
+        - name: dash-client
+          image: rambo1802/dash-node:latest
+          imagePullPolicy: Always
+          securityContext:
+            capabilities:
+              add: ["NET_ADMIN"] # Necessário para mudar a rota
+          env:
+          # URL SIMPLE QUE VALIDAMOS (Funcionando com logs de frame)
+          - name: MPD_URL
+            value: "http://dash-server-service:8080/BBB_vod_2s/ftp.itec.aau.at/datasets/DASHDataset2014/BigBuckBunny/2sec/BigBuckBunny_2s_simple_2014_05_09.mpd"
+          - name: SESSION_DURATION
+            value: "300"
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo "[INIT] Aguardando interface uesimtun0..."
+              # Espera o container UE conectar no 5G e criar a interface
+              while ! ip link show uesimtun0 > /dev/null 2>&1; do sleep 1; done
+              echo "[INIT] Interface 5G uesimtun0 detectada!"
+
+              # Descobre o IP do serviço de vídeo
+              echo "[INIT] Resolvendo DNS do servidor..."
+              SERVER_IP=$(getent hosts dash-server-service | awk '{ print $1 }')
+              echo "[INIT] IP do Servidor DASH: $SERVER_IP"
+
+              if [ -z "$SERVER_IP" ]; then
+                echo "[ERRO] Não foi possível resolver o IP do servidor!"
+                exit 1
+              fi
+
+              # Adiciona a rota: "Para chegar no Servidor de Vídeo, vá pelo Túnel 5G"
+              echo "[ROTA] Adicionando rota via uesimtun0..."
+              ip route add $SERVER_IP dev uesimtun0
+              
+              echo "[INIT] Rota configurada. Iniciando Player..."
+              node dashjs_node_player.js
