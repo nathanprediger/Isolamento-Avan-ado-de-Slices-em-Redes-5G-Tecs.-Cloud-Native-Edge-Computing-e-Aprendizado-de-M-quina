@@ -399,7 +399,10 @@ data:
         client:
           upf:
             - address: upf
-              dnn: [internet, slice01, slice02]
+              dnn: [internet, slice01]
+            - address: upf2
+              dnn: [internet, slice02]
+          
       gtpc:
         server:
           - dev: eth0
@@ -449,252 +452,252 @@ spec:
   - interval: 30s
     port: tcp-9090
 
-### UPF
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: upf-gtp
-  namespace: nrprediger
-  labels:
-    app: upf
-spec:
-  clusterIP: None
-  selector:
-    app: upf
-  ports:
-    - name: udp-2152
-      protocol: UDP
-      port: 2152
-      targetPort: 2152
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: upf
-  namespace: nrprediger
-  labels:
-    app: upf
-spec:
-  selector:
-    app: upf
-  ports:
-    - name: http2-8080
-      protocol: TCP
-      port: 8080
-      targetPort: 8080
-    - name: udp-2152
-      protocol: UDP
-      port: 2152
-      targetPort: 2152
-    - name: udp-8805
-      protocol: UDP
-      port: 8805
-      targetPort: 8805
-    - name: tcp-9090
-      protocol: TCP
-      port: 9090
-      targetPort: 9090
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: upf
-  namespace: nrprediger
-  labels:
-    app: upf
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: upf
-  template:
-    metadata:
-      labels:
-        app: upf
-        version: 2.7.6
-    spec:
-      nodeSelector:
-        kubernetes.io/hostname: petshopboys
-      #       kubernetes.io/arch: amd64
-      containers:
-        - name: upf
-          image: gradiant/open5gs:2.7.6
-          env:
-            - name: POD_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.podIP
-          ports:
-            - name: http2-8080
-              protocol: TCP
-              containerPort: 8080
-            - name: udp-2152
-              protocol: UDP
-              containerPort: 2152
-            - name: udp-8805
-              protocol: UDP
-              containerPort: 8805
-            - name: tcp-9090
-              protocol: TCP
-              containerPort: 9090
-          securityContext:
-            privileged: true
-            runAsUser: 0
-            capabilities:
-              add: ["NET_ADMIN", "SYS_MODULE"]
-          volumeMounts:
-            - name: upf-config
-              mountPath: /open5gs/config-map/upf.yaml
-              subPath: "upf.yaml"
-            - name: "dev-net-tun"
-              mountPath: "/dev/net/tun" # Needed for GTP tunnel
-            - name: upf-config
-              mountPath: /bin/entrypoint.sh
-              subPath: entrypoint.sh
-          command: ["/bin/entrypoint.sh"]
-      volumes:
-        - name: upf-config
-          configMap:
-            name: upf
-            defaultMode: 0777
-        - name: dev-net-tun
-          hostPath:
-            path: /dev/net/tun
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: upf
-  namespace: nrprediger
-  labels:
-    app: upf
-data:
-  upf.yaml: |-
-    logger:
-      level: info
-      path:
-        file: /opt/open5gs/var/log/open5gs/upf.log
+# ### UPF
+# ---
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: upf-gtp
+#   namespace: nrprediger
+#   labels:
+#     app: upf
+# spec:
+#   clusterIP: None
+#   selector:
+#     app: upf
+#   ports:
+#     - name: udp-2152
+#       protocol: UDP
+#       port: 2152
+#       targetPort: 2152
+# ---
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: upf
+#   namespace: nrprediger
+#   labels:
+#     app: upf
+# spec:
+#   selector:
+#     app: upf
+#   ports:
+#     - name: http2-8080
+#       protocol: TCP
+#       port: 8080
+#       targetPort: 8080
+#     - name: udp-2152
+#       protocol: UDP
+#       port: 2152
+#       targetPort: 2152
+#     - name: udp-8805
+#       protocol: UDP
+#       port: 8805
+#       targetPort: 8805
+#     - name: tcp-9090
+#       protocol: TCP
+#       port: 9090
+#       targetPort: 9090
+# ---
+# apiVersion: apps/v1
+# kind: Deployment
+# metadata:
+#   name: upf
+#   namespace: nrprediger
+#   labels:
+#     app: upf
+# spec:
+#   replicas: 1
+#   selector:
+#     matchLabels:
+#       app: upf
+#   template:
+#     metadata:
+#       labels:
+#         app: upf
+#         version: 2.7.6
+#     spec:
+#       nodeSelector:
+#         kubernetes.io/hostname: petshopboys
+#       #       kubernetes.io/arch: amd64
+#       containers:
+#         - name: upf
+#           image: gradiant/open5gs:2.7.6
+#           env:
+#             - name: POD_IP
+#               valueFrom:
+#                 fieldRef:
+#                   fieldPath: status.podIP
+#           ports:
+#             - name: http2-8080
+#               protocol: TCP
+#               containerPort: 8080
+#             - name: udp-2152
+#               protocol: UDP
+#               containerPort: 2152
+#             - name: udp-8805
+#               protocol: UDP
+#               containerPort: 8805
+#             - name: tcp-9090
+#               protocol: TCP
+#               containerPort: 9090
+#           securityContext:
+#             privileged: true
+#             runAsUser: 0
+#             capabilities:
+#               add: ["NET_ADMIN", "SYS_MODULE"]
+#           volumeMounts:
+#             - name: upf-config
+#               mountPath: /open5gs/config-map/upf.yaml
+#               subPath: "upf.yaml"
+#             - name: "dev-net-tun"
+#               mountPath: "/dev/net/tun" # Needed for GTP tunnel
+#             - name: upf-config
+#               mountPath: /bin/entrypoint.sh
+#               subPath: entrypoint.sh
+#           command: ["/bin/entrypoint.sh"]
+#       volumes:
+#         - name: upf-config
+#           configMap:
+#             name: upf
+#             defaultMode: 0777
+#         - name: dev-net-tun
+#           hostPath:
+#             path: /dev/net/tun
+# ---
+# apiVersion: v1
+# kind: ConfigMap
+# metadata:
+#   name: upf
+#   namespace: nrprediger
+#   labels:
+#     app: upf
+# data:
+#   upf.yaml: |-
+#     logger:
+#       level: info
+#       path:
+#         file: /opt/open5gs/var/log/open5gs/upf.log
 
-    global:
-      max:
-        ue: 5000
+#     global:
+#       max:
+#         ue: 5000
 
-    sbi:
-      server:
-        no_tls: true
-      client:
-        no_tls: true
-    upf:
-      pfcp:
-        server:
-          - dev: eth0
-        #heartbeat:
-        #  enabled: false
-            advertise: upf
-        client:
-        #  smf:
-        #    - address: smf
-      gtpu:
-        server:
-          - dev: eth0
-            advertise: upf
-      metrics:
-        server:
-          - dev: eth0
-            port: 9090
-      session:
-        - subnet: 172.16.0.0/16
-          gateway: 172.16.0.1
-          dnn: internet
-          dev: ogstun
-        - subnet: 172.17.0.0/16
-          gateway: 172.17.0.1
-          dnn: slice01
-          dev: slice01
-        - subnet: 172.18.0.0/16
-          gateway: 172.18.0.1
-          dnn: slice02
-          dev: slice02
+#     sbi:
+#       server:
+#         no_tls: true
+#       client:
+#         no_tls: true
+#     upf:
+#       pfcp:
+#         server:
+#           - dev: eth0
+#         #heartbeat:
+#         #  enabled: false
+#             advertise: upf
+#         client:
+#         #  smf:
+#         #    - address: smf
+#       gtpu:
+#         server:
+#           - dev: eth0
+#             advertise: upf
+#       metrics:
+#         server:
+#           - dev: eth0
+#             port: 9090
+#       session:
+#         - subnet: 172.16.0.0/16
+#           gateway: 172.16.0.1
+#           dnn: internet
+#           dev: ogstun
+#         - subnet: 172.17.0.0/16
+#           gateway: 172.17.0.1
+#           dnn: slice01
+#           dev: slice01
+#         - subnet: 172.18.0.0/16
+#           gateway: 172.18.0.1
+#           dnn: slice02
+#           dev: slice02
 
-  entrypoint.sh: |-
-    #!/bin/bash
-    set -e
+#   entrypoint.sh: |-
+#     #!/bin/bash
+#     set -e
 
-    echo "Executing k8s customized entrypoint.sh"
-    #echo "Creating net device {{ .dev }}"
-    if grep "ogstun" /proc/net/dev > /dev/null; then
-      echo "[WARNING] Net device ogstun already exists!"
-      ip addr add 172.16.0.1/16 dev ogstun || true
-      ip link set ogstun up
-    else 
-      echo "[INFO] Create device ogstun!"
-      ip tuntap add name ogstun mode tun
-      ip addr add 172.16.0.1/16 dev ogstun || true
-      ip link set ogstun up
-    fi
+#     echo "Executing k8s customized entrypoint.sh"
+#     #echo "Creating net device {{ .dev }}"
+#     if grep "ogstun" /proc/net/dev > /dev/null; then
+#       echo "[WARNING] Net device ogstun already exists!"
+#       ip addr add 172.16.0.1/16 dev ogstun || true
+#       ip link set ogstun up
+#     else 
+#       echo "[INFO] Create device ogstun!"
+#       ip tuntap add name ogstun mode tun
+#       ip addr add 172.16.0.1/16 dev ogstun || true
+#       ip link set ogstun up
+#     fi
 
-    # echo "Config tun"
-    # ip tuntap add name ogstun mode tun
-    # ip addr add 192.168.0.1/16 dev ogstun 
-    # ip link set ogstun up
+#     # echo "Config tun"
+#     # ip tuntap add name ogstun mode tun
+#     # ip addr add 192.168.0.1/16 dev ogstun 
+#     # ip link set ogstun up
 
-    if grep "slice01" /proc/net/dev > /dev/null; then
-      echo "[WARNING] Net device slice01 already exists!"
-      ip addr add 172.17.0.1/16 dev slice01 || true
-      ip link set slice01 up
-    else 
-      echo "[INFO] Create device slice01 !"
-      ip tuntap add name slice01 mode tun
-      ip addr add 172.17.0.1/16 dev slice01 || true
-      ip link set slice01 up
-    fi
+#     if grep "slice01" /proc/net/dev > /dev/null; then
+#       echo "[WARNING] Net device slice01 already exists!"
+#       ip addr add 172.17.0.1/16 dev slice01 || true
+#       ip link set slice01 up
+#     else 
+#       echo "[INFO] Create device slice01 !"
+#       ip tuntap add name slice01 mode tun
+#       ip addr add 172.17.0.1/16 dev slice01 || true
+#       ip link set slice01 up
+#     fi
 
-    if grep "slice02" /proc/net/dev > /dev/null; then
-      echo "[WARNING] Net device slice02 already exists!"
-      ip addr add 172.17.0.1/16 dev slice02 || true
-      ip link set slice02 up
-    else 
-      echo "[INFO] Create device slice02 !"
-      ip tuntap add name slice02 mode tun
-      ip addr add 172.18.0.1/16 dev slice02 || true
-      ip link set slice02 up
-    fi
+#     if grep "slice02" /proc/net/dev > /dev/null; then
+#       echo "[WARNING] Net device slice02 already exists!"
+#       ip addr add 172.17.0.1/16 dev slice02 || true
+#       ip link set slice02 up
+#     else 
+#       echo "[INFO] Create device slice02 !"
+#       ip tuntap add name slice02 mode tun
+#       ip addr add 172.18.0.1/16 dev slice02 || true
+#       ip link set slice02 up
+#     fi
 
-    # echo "[INFO] Configurando QoS/Limitation via TC"
+#     # echo "[INFO] Configurando QoS/Limitation via TC"
     
-    # # Limpar regras antigas (boa prática)
-    # tc qdisc del dev slice01 root 2> /dev/null || true
+#     # # Limpar regras antigas (boa prática)
+#     # tc qdisc del dev slice01 root 2> /dev/null || true
     
-    # # Adicionar uma regra de limitação na interface do slice01 (Ex: limitar a 1mbit com burst)
-    # # Isso simula um slice de baixa prioridade/recursos
-    # tc qdisc add dev slice01 root tbf rate 1mbit burst 32kbit latency 400ms
+#     # # Adicionar uma regra de limitação na interface do slice01 (Ex: limitar a 1mbit com burst)
+#     # # Isso simula um slice de baixa prioridade/recursos
+#     # tc qdisc add dev slice01 root tbf rate 1mbit burst 32kbit latency 400ms
     
-    # echo "[INFO] slice01 limitado a 1mbit. slice02 está sem limites (Prioridade Alta)."
+#     # echo "[INFO] slice01 limitado a 1mbit. slice02 está sem limites (Prioridade Alta)."
 
-    echo "[INFO] Config sysctl"
-    sysctl -w net.ipv4.ip_forward=1
-    sysctl -w net.ipv6.conf.all.forwarding=1
+#     echo "[INFO] Config sysctl"
+#     sysctl -w net.ipv4.ip_forward=1
+#     sysctl -w net.ipv6.conf.all.forwarding=1
 
-    echo "Enable NAT"
-    iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+#     echo "Enable NAT"
+#     iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
 
-    open5gs-upfd -c /open5gs/config-map/upf.yaml
----
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: upf
-  namespace: nrprediger
-  labels:
-    app: upf
-spec:
-  selector:
-    matchLabels:
-      app: upf
-  endpoints:
-  - interval: 30s
-    port: tcp-9090
+#     open5gs-upfd -c /open5gs/config-map/upf.yaml
+# ---
+# apiVersion: monitoring.coreos.com/v1
+# kind: ServiceMonitor
+# metadata:
+#   name: upf
+#   namespace: nrprediger
+#   labels:
+#     app: upf
+# spec:
+#   selector:
+#     matchLabels:
+#       app: upf
+#   endpoints:
+#   - interval: 30s
+#     port: tcp-9090
 
 ### BSF
 ---
