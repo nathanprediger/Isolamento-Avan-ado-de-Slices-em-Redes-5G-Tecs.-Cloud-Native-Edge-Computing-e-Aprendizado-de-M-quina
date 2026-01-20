@@ -3,7 +3,7 @@
 # ================= CONFIGURAÇÕES =================
 # Namespace do Kubernetes
 NAMESPACE="nrprediger"
-
+NODE_NAME="blacksabbath"
 # Configurações do Slice de Vídeo (Slice 01)
 SLICE_SST=1
 SLICE_SD="000001"
@@ -14,7 +14,7 @@ BANDWIDTH="1000M"  # Limite de banda (opcional, ex: "5M" para 5Mbps)
 # Começa no IMSI final ...003 (já que o 001 e 002 você usou para testes manuais)
 START_ID=1
 # Quantidade de clientes a criar
-COUNT=6 
+COUNT=16
 
 # Imagem do Player de Vídeo
 APP_IMAGE="rambo1802/dash-node:latest"
@@ -151,6 +151,8 @@ spec:
         # Limite de banda opcional (Calico)
         qos.projectcalico.org/ingressBandwidth: ${BANDWIDTH}
     spec:
+      nodeSelector:
+        kubernetes.io/hostname: ${NODE_NAME}
       volumes:
         - name: config-volume
           configMap:

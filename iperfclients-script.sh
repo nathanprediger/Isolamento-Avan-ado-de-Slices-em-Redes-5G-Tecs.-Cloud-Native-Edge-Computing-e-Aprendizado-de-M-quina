@@ -2,7 +2,7 @@
 
 # ================= CONFIGURAÇÕES =================
 NAMESPACE="nrprediger"
-
+NODE_NAME="blacksabbath"
 # Configurações do Slice de Interferência (Slice 02)
 SLICE_SST=1
 SLICE_SD="000002"
@@ -10,8 +10,8 @@ DNN="slice02"
 
 # Intervalo de IMSIs (Agressores)
 # IMPORTANTE: Começa no 7 para não bater com os de vídeo (que presumimos ser 1 a 6)
-START_ID=7
-COUNT=3 
+START_ID=17
+COUNT=16
 
 # Usando a MESMA imagem do seu servidor para garantir compatibilidade (iPerf 2)
 APP_IMAGE="maikovisky/iperf:latest"
@@ -138,6 +138,8 @@ spec:
       annotations:
         # Sem limite de banda para poder saturar a rede
     spec:
+      nodeSelector:
+        kubernetes.io/hostname: ${NODE_NAME}
       volumes:
         - name: config-volume
           configMap:

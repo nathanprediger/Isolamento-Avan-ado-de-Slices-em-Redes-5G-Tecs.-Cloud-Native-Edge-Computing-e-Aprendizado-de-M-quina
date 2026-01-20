@@ -37,7 +37,7 @@ spec:
         app: iperf01
     spec:        
       nodeSelector:
-        kubernetes.io/hostname: petshopboys    
+        kubernetes.io/hostname: blacksabbath   
       # nodeSelector:
       #   kubernetes.io/arch: amd64
       #   nodetype: server

@@ -3,10 +3,10 @@
 # ================= CONFIGURAÇÕES =================
 NAMESPACE="nrprediger"
 START_ID=7
-COUNT=3
+COUNT=6
 TARGET="iperf01"
 PORT="5001"
-BANDWIDTH="50M"
+BANDWIDTH="10M"
 DURATION="600"
 # =================================================
 
@@ -30,9 +30,10 @@ do
     echo ">>> Disparando iPerf no container 'iperf-client' do pod: $POD_NAME"
 
     # --- CORREÇÃO: Adicionado '-c iperf-client' ---
+    # kubectl exec -n ${NAMESPACE} ${POD_NAME} -c iperf-client -- \
+    #     sh -c "nohup iperf -c ${TARGET} -p ${PORT} -u -b ${BANDWIDTH} -t ${DURATION} -i 10 > /tmp/iperf.log 2>&1 &" &
     kubectl exec -n ${NAMESPACE} ${POD_NAME} -c iperf-client -- \
-        sh -c "nohup iperf -c ${TARGET} -p ${PORT} -u -b ${BANDWIDTH} -t ${DURATION} -i 10 > /tmp/iperf.log 2>&1 &" &
-
+        sh -c "nohup iperf -c ${TARGET} -p ${PORT} -t ${DURATION} -i 10 > /tmp/iperf.log 2>&1 &" &
 done
 
 echo "--- Ataque iniciado! ---"

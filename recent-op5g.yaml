@@ -226,6 +226,12 @@ data:
               sd: 000001
             - sst: 1
               sd: 000002
+            - sst: 1
+              sd: 000003
+            - sst: 1
+              sd: 000004
+            - sst: 1
+              sd: 000005
       security:
           integrity_order : [ NIA2, NIA1, NIA0 ]
           ciphering_order : [ NEA0, NEA1, NEA2 ]
@@ -402,7 +408,13 @@ data:
               dnn: [internet, slice01]
             - address: upf2
               dnn: [internet, slice02]
-          
+            - address: upf3
+              dnn: [internet, slice03]
+            - address: upf4
+              dnn: [internet, slice04]
+            - address: upf5
+              dnn: [internet, slice05]
+            
       gtpc:
         server:
           - dev: eth0
@@ -423,6 +435,15 @@ data:
         - subnet: 172.18.0.0/16
           gateway: 172.18.0.1
           dnn: slice02
+        - subnet: 172.19.0.0/16
+          gateway: 172.19.0.1
+          dnn: slice03
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1
+          dnn: slice04
+        - subnet: 172.21.0.0/16
+          gateway: 172.21.0.1
+          dnn: slice05
       dns:
       - 10.96.0.10
       mtu: 1370
@@ -436,6 +457,15 @@ data:
           - sst: 1
             sd: 000002
             dnn: [internet, slice02]
+          - sst: 1
+            sd: 000003
+            dnn: [internet, slice03]
+          - sst: 1
+            sd: 000004
+            dnn: [internet, slice04]
+          - sst: 1
+            sd: 000005
+            dnn: [internet, slice05]
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
@@ -1200,12 +1230,16 @@ data:
                 sd: 2
             - uri: http://nrf:8080
               s_nssai:
-                sst: 3
+                sst: 1
                 sd: 3
             - uri: http://nrf:8080
               s_nssai:
-                sst: 4
+                sst: 1
                 sd: 4
+            - uri: http://nrf:8080
+              s_nssai:
+                sst: 1
+                sd: 5
 ### PCF
 ---
 apiVersion: v1
