@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y \
     gnupg \
     iproute2 \
     procps \
+    iputils-ping \
     ca-certificates \
     fonts-liberation \
     libasound2 \

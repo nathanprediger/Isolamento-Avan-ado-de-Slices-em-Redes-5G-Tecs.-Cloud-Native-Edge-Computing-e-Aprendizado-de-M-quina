@@ -8,12 +8,12 @@ data:
     print("Conectando ao banco Open5GS...");
     db = db.getSiblingDB('open5gs');
 
-    var start_imsi_suffix = 17;
-    var end_imsi_suffix = 32;
+    var start_imsi_suffix = 53;
+    var end_imsi_suffix = 56;
     var mcc_mnc = "99970";
-    var slice_dnn = "slice02";
+    var slice_dnn = "slice11";
     var slice_sst = 1;
-    var slice_sd = "000002";
+    var slice_sd = "000011";
     
     for (var i = start_imsi_suffix; i <= end_imsi_suffix; i++) {
         var suffix = (i < 10 ? "0" + i : i); 
@@ -85,7 +85,7 @@ metadata:
   name: register-ues-job
   namespace: nrprediger
 spec:
-  ttlSecondsAfterFinished: 15
+  ttlSecondsAfterFinished: 5
   template:
     spec:
       containers:

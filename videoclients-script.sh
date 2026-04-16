@@ -14,7 +14,7 @@ BANDWIDTH="1000M"  # Limite de banda (opcional, ex: "5M" para 5Mbps)
 # Começa no IMSI final ...003 (já que o 001 e 002 você usou para testes manuais)
 START_ID=1
 # Quantidade de clientes a criar
-COUNT=16
+COUNT=10
 
 # Imagem do Player de Vídeo
 APP_IMAGE="rambo1802/dash-node:latest"
@@ -164,6 +164,7 @@ spec:
         # 1. Container da Torre (gNB)
         - name: gnb
           image: free5gc/ueransim:latest
+          imagePullPolicy: IfNotPresent
           securityContext:
             capabilities:
               add: ["NET_ADMIN"]
@@ -190,6 +191,7 @@ spec:
         # 2. Container do Celular (UE)
         - name: ue
           image: free5gc/ueransim:latest
+          imagePullPolicy: IfNotPresent
           securityContext:
             privileged: true
             capabilities:
@@ -211,9 +213,9 @@ spec:
               add: ["NET_ADMIN"]
           env:
             - name: MPD_URL
-              value: "http://dash-server-service:8080/BBB_vod_2s/ftp.itec.aau.at/datasets/DASHDataset2014/BigBuckBunny/2sec/BigBuckBunny_2s_simple_2014_05_09.mpd"
+              value: "http://dash-server-service:8080/manifest.mpd"
             - name: SESSION_DURATION
-              value: "300"
+              value: "400"
           command: ["/bin/sh", "-c"]
           args:
             - |
@@ -223,19 +225,33 @@ spec:
               echo "[INIT] Interface uesimtun0 detectada!"
 
               echo "[INIT] Configurando rota para o servidor de vídeo..."
-              # Descobre o IP do Service do Servidor de Vídeo
               SERVER_IP=\$(getent hosts dash-server-service | awk '{ print \$1 }')
               
               if [ -z "\$SERVER_IP" ]; then
-                echo "[ERRO] Não foi possível resolver dash-server-service. Usando rota default..."
+                echo "[ERRO] Não foi possível resolver dash-server-service."
               else
-                # Força o tráfego do vídeo a passar pela interface 5G
-                ip route add \$SERVER_IP dev uesimtun0
+                # (CORREÇÃO 1) Usa 'replace' ou 'test' para evitar erro "File exists"
+                ip route replace \$SERVER_IP dev uesimtun0 || true
                 echo "[ROTA] Tráfego para \$SERVER_IP roteado via uesimtun0"
+                
+                # (CORREÇÃO 2 - PRINCIPAL) Keepalive para evitar RRC-IDLE
+                echo "[INIT] Iniciando Keepalive (Ping) para manter RRC CONNECTED..."
+                # Pinga a cada 1 segundo em background, descartando a saída
+                ping -i 1 \$SERVER_IP > /dev/null 2>&1 &
+                PING_PID=\$!
               fi
+              
               
               echo "[INIT] Iniciando Player DASH..."
               node dashjs_node_player.js
+              
+              # Limpeza: Mata o ping quando o teste acabar para não sujar o log futuro
+              if [ ! -z "\$PING_PID" ]; then
+                kill \$PING_PID
+              fi
+
+              echo "[FIM] Teste finalizado. Entrando em espera para manter logs..."
+              sleep infinity
 EOF
 
 done

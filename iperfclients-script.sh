@@ -5,13 +5,13 @@ NAMESPACE="nrprediger"
 NODE_NAME="blacksabbath"
 # Configurações do Slice de Interferência (Slice 02)
 SLICE_SST=1
-SLICE_SD="000002"
-DNN="slice02"
+SLICE_SD="000010"
+DNN="slice10"
 
 # Intervalo de IMSIs (Agressores)
 # IMPORTANTE: Começa no 7 para não bater com os de vídeo (que presumimos ser 1 a 6)
-START_ID=17
-COUNT=16
+START_ID=49
+COUNT=1
 
 # Usando a MESMA imagem do seu servidor para garantir compatibilidade (iPerf 2)
 APP_IMAGE="maikovisky/iperf:latest"
@@ -19,7 +19,7 @@ TARGET_SERVICE="iperf01"
 TARGET_PORT="5001"
 # =================================================
 
-echo "--- Iniciando Deploy de Clientes iPerf2 (Slice 02) ---"
+echo "--- Iniciando Deploy de Clientes iPerf3 ---"
 
 for (( i=0; i<$COUNT; i++ ))
 do

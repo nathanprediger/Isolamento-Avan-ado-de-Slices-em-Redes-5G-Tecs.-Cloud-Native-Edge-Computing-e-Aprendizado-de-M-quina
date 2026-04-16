@@ -13,9 +13,11 @@ spec:
       labels:
         app: dash-server
     spec:
+      nodeSelector:
+        kubernetes.io/hostname: blacksabbath  
       containers:
       - name: dash-server
-        image: marcosmagnocarvalho/videoserver:cni
+        image: rambo1802/dash-server:latest
         command: ["nginx", "-g", "daemon off;"]
         ports:
         - containerPort: 80
