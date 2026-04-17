@@ -33,7 +33,7 @@ end
 # Unset irrelevant variables.
 deactivate nondestructive
 
-set -gx VIRTUAL_ENV /home/rambo/nathan_open5gs/venv
+set -gx VIRTUAL_ENV /home/rambo/BEPE/Isolamento-Avan-ado-de-Slices-em-Redes-5G-Tecs.-Cloud-Native-Edge-Computing-e-Aprendizado-de-M-quina/venv
 
 set -gx _OLD_VIRTUAL_PATH $PATH
 set -gx PATH "$VIRTUAL_ENV/"bin $PATH
