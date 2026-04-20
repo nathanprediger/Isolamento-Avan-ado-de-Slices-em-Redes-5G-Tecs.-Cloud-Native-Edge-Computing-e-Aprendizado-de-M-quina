@@ -1,8 +1,12 @@
 import json
+import time
 import spade
 import asyncio
 from spade.agent import Agent
 from spade.behaviour import CyclicBehaviour
+from spade.behaviour import PeriodicBehaviour
+from spade.message import Message
+from spade.template import Template
 from kubernetes import client, config
 
 # CONSTANTS
@@ -77,20 +81,20 @@ class ResourceAgent(Agent):
                         patch = {
                             "metadata": {
                                 "annotations" : {
-                                    "qos.porjectcalico.org/ingressBandwidth":new_bandwidth,
+                                    "qos.projectcalico.org/ingressBandwidth":new_bandwidth,
                                     "qos.projectcalico.org/egressBandwidth":new_bandwidth
                                 }
                             }
                         }
-                    self.v1.patch_namespaced_pod(name=pod_name, namespace=NAMESPACE, body=patch)
-                    print(f"[SUCCESS] Updated BANDWIDTH for pod {pod_name} to {new_bandwidth}")
+                        self.v1.patch_namespaced_pod(name=pod_name, namespace=NAMESPACE, body=patch)
+                        print(f"[SUCCESS] Updated BANDWIDTH for pod {pod_name} to {new_bandwidth}")
                 else:
                     print(f"[ERROR] No pods found for UPF {upf_name}")
             except Exception as e:
                 print(f"[ERROR] Failed to update BANDWIDTH for UPF {upf_name}: {e}")
         
         def update_pod_memory(self, upf_name, new_memory):
-             try:
+            try:
                 # Fetch the corresponding pod
                 pods = self.v1.list_namespaced_pod(namespace=NAMESPACE, label_selector=f"app={upf_name}")
                 if pods.items:
@@ -111,16 +115,71 @@ class ResourceAgent(Agent):
                             }
                         }
                         self.v1.patch_namespaced_pod(name=pod_name, namespace=NAMESPACE, body=patch)
-                        print(f"[SUCCESS] Updated CPU for pod {pod_name} to {new_memory}")
+                        print(f"[SUCCESS] Updated MEMORY for pod {pod_name} to {new_memory}")
                 else:
                     print(f"[ERROR] No pods found for UPF {upf_name}")
             except Exception as e:
-                print(f"[ERROR] Failed to update CPU for UPF {upf_name}: {e}")
+                print(f"[ERROR] Failed to update MEMORY for UPF {upf_name}: {e}")
+
+    class AuctioneerBehavior(PeriodicBehaviour):
+        async def on_start(self):
+            print("[AUCTION] Initializing auctioneer behavior (runs every 5 seconds).")
+            self.auction_id = 0
+            # List of auction's participants
+            self.slice_agents = ["slice_video_agent@localhost","slice_iperf_agent@localhost"]
+        
+        async def run(self):
+            self.auction_id += 1
+            print(f"[AUCTION] Starting auction #{self.auction_id} for resource allocation.")
+            cpu_limit = 1
+            memory_limit = 1
+            bw_limit = 1
+
+            # Broadcast for auction's participants
+            for agent in self.slice_agents:
+                msg = Message(to=agent)
+                msg.set_metadata("performative", "cfp")
+                msg.body = json.dumps({
+                    "cpu" : f"{cpu_limit}",
+                    "memory" : f"{memory_limit}",
+                    "bandwidth" : f"{bw_limit}"
+                })
+                await self.send(msg)
+                print(f"Message sent to {agent}.")
+            
+            # Collect bids from participants
+            print(f"[AUCTION] CFP sent to participants. Awaiting bids...")
+            bids = []
+            time_limit = 2.0
+            start_time = time.time()
+
+            while time.time() - start_time < time_limit:
+                time_remaining = time_limit - (time.time() - start_time)
+                if time_remaining <= 0:
+                    break
+                msg = await self.receive(timeout=time_remaining)
+                if msg and msg.get_metadata("performative") == "propose":
+                    print(f"[AUCTION] Received bid from {msg.sender}: {msg.body}")
+                    bids.append(msg)
+
+            print(f"[AUCTION] Auction #{self.auction_id} ended. Total bids received: {len(bids)}")
+
+            if not bids:
+                print(f"[AUCTION] No bids received for this auction. Resources remain as it is.")
+                return
+            
+            # Determine the winning bid basen on Vickrey auction rules (highest bidder wins but pays the second-highest bid price)
+            
+
+
+
+            
 
     async def setup(self):
         print("ResourceAgent starting...")
         self.add_behaviour(self.ResourceBehavior())
-        return await super().setup()
+        self.add_behaviour(self.AuctioneerBehavior(period=5))
+        return await super().setup() 
 
 async def main():
     resource_agent = ResourceAgent("resource_agent@localhost", "password")
