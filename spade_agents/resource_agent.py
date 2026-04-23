@@ -14,112 +14,10 @@ NAMESPACE = "nrprediger"
 class ResourceAgent(Agent):
     class ResourceBehavior(CyclicBehaviour):
         async def on_start(self):
-            try:
-                # Load Kubernetes configuration and initialize the API client
-                config.load_kube_config()
-                self.v1 = client.CoreV1Api()
-                print("ResourceAgent started and connected to Kubernetes cluster.")
-            except Exception as e:
-                print(f"Failed to connect to Kubernetes cluster: {e}")
-                await self.agent.stop()
             return await super().on_start()
         async def run(self):
             # The agent will listen for messages containing resource requests
             msg = await self.receive(timeout=5)
-            if msg:
-                print(f"[RECEIVED] Order received from {msg.sender}: {msg.body}")
-                try:
-                    payload = json.loads(msg.body)
-                    target_upf = payload.get("upf")
-                    new_cpu = payload.get("cpu")
-                    new_memory = payload.get("memory")
-                    new_bandwidth = payload.get("bandwidth")
-                    # Update the UPF resource in Kubernetes
-                    if target_upf and new_cpu:
-                        self.update_pod_cpu(target_upf, new_cpu)
-                    if target_upf and new_memory:
-                        self.update_pod_memory(target_upf, new_memory)
-                    if target_upf and new_bandwidth:
-                        self.update_pod_bandwidth(target_upf, new_bandwidth)
-                    print(f"[UPDATED] Resource update applied to {target_upf}")
-                except json.JSONDecodeError:
-                    print("[ERROR]Failed to decode JSON from message body.")
-        def update_pod_cpu(self, upf_name, new_cpu):
-            try:
-                # Fetch the corresponding pod
-                pods = self.v1.list_namespaced_pod(namespace=NAMESPACE, label_selector=f"app={upf_name}")
-                if pods.items:
-                    for pod in pods.items:
-                        # Update the CPU resource request/limit
-                        pod_name = pod.metadata.name
-                        # Create a patch to update the CPU resources
-                        patch ={
-                            "spec": {
-                                "containers": [{
-                                    "name": upf_name,  
-                                        "resources": {
-                                            "limits": {
-                                                "cpu": new_cpu
-                                            }
-                                        }
-                                }]
-                            }
-                        }
-                        self.v1.patch_namespaced_pod(name=pod_name, namespace=NAMESPACE, body=patch)
-                        print(f"[SUCCESS] Updated CPU for pod {pod_name} to {new_cpu}")
-                else:
-                    print(f"[ERROR] No pods found for UPF {upf_name}")
-            except Exception as e:
-                print(f"[ERROR] Failed to update CPU for UPF {upf_name}: {e}")
-
-        def update_pod_bandwidth(self, upf_name, new_bandwidth):
-            try:
-                pods = self.v1.list_namespaced_pod(namespace=NAMESPACE, label_selector=f"app={upf_name}")
-                if pods.items:
-                    for pod in pods.items:
-                        pod_name = pod.metadata.name
-                        patch = {
-                            "metadata": {
-                                "annotations" : {
-                                    "qos.projectcalico.org/ingressBandwidth":new_bandwidth,
-                                    "qos.projectcalico.org/egressBandwidth":new_bandwidth
-                                }
-                            }
-                        }
-                        self.v1.patch_namespaced_pod(name=pod_name, namespace=NAMESPACE, body=patch)
-                        print(f"[SUCCESS] Updated BANDWIDTH for pod {pod_name} to {new_bandwidth}")
-                else:
-                    print(f"[ERROR] No pods found for UPF {upf_name}")
-            except Exception as e:
-                print(f"[ERROR] Failed to update BANDWIDTH for UPF {upf_name}: {e}")
-        
-        def update_pod_memory(self, upf_name, new_memory):
-            try:
-                # Fetch the corresponding pod
-                pods = self.v1.list_namespaced_pod(namespace=NAMESPACE, label_selector=f"app={upf_name}")
-                if pods.items:
-                    for pod in pods.items:
-                        # Update the CPU resource request/limit
-                        pod_name = pod.metadata.name
-                        # Create a patch to update the CPU resources
-                        patch ={
-                            "spec": {
-                                "containers": [{
-                                    "name": upf_name,  
-                                        "resources": {
-                                            "limits": {
-                                                "memory": new_memory
-                                            }
-                                        }
-                                }]
-                            }
-                        }
-                        self.v1.patch_namespaced_pod(name=pod_name, namespace=NAMESPACE, body=patch)
-                        print(f"[SUCCESS] Updated MEMORY for pod {pod_name} to {new_memory}")
-                else:
-                    print(f"[ERROR] No pods found for UPF {upf_name}")
-            except Exception as e:
-                print(f"[ERROR] Failed to update MEMORY for UPF {upf_name}: {e}")
 
     class AuctioneerBehavior(PeriodicBehaviour):
         async def on_start(self):
@@ -170,13 +68,131 @@ class ResourceAgent(Agent):
             
             # Determine the winning bid basen on Vickrey auction rules (highest bidder wins but pays the second-highest bid price)
             
+            structured_bids = []
+            for bid in bids:
+                bid_data = json.loads(bid.body)
+                bid_value = float(bid_data["bid"])
+                cpu_target = float(bid_data["cpu_target"])
+                current_cpu = float(bid_data["current_cpu"])
+                structured_bids.append({
+                    "sender": bid.sender, 
+                    "bid": bid_value, 
+                    "upf_target": bid_data["upf_target"],
+                    "cpu_target": cpu_target,
+                    "current_cpu": current_cpu
 
-
-
+                })
+            structured_bids.sort(key=lambda x: x["bid"], reverse=True)
             
+            # Announce the result of the auction
+            number_of_bids = len(structured_bids)
+            # Calculate the quantity of CPU reduction for the loser(s) based on winner's cpu target
+            cpu_reduce = (structured_bids[0]["cpu_target"]-structured_bids[0]["current_cpu"])/(number_of_bids-1) if number_of_bids > 1 else 0
+            for i, bid in enumerate(structured_bids):
+                msg = Message(to=str(bid["sender"]))
+                if i == 0:
+                    value = structured_bids[1]["bid"] if number_of_bids > 1 else bid["bid"]
+                    print(f"[AUCTION] Winner: {bid['sender']} with bid {bid['bid']}. Price to pay: {value}. CPU set to: {bid['cpu_target']}.")
+                    self.agent.update_pod_cpu(bid["upf_target"], bid["cpu_target"])
+                    msg.set_metadata("performative", "accept-proposal")
+                    msg.body = json.dumps({ "value": value })
+                else:
+                    new_cpu = max(bid["current_cpu"]-cpu_reduce, 0.1)
+                    print(f"[AUCTION] Loser: {bid['sender']} with bid {bid['bid']}. CPU reduced to: {new_cpu}.")
+                    self.agent.update_pod_cpu(bid["upf_target"], new_cpu)
+                    msg.set_metadata("performative", "reject-proposal")
+                    
+                await self.send(msg)
+
+                
+
+    def update_pod_cpu(self, upf_name, new_cpu):
+        try:
+            # Fetch the corresponding pod
+            pods = self.v1.list_namespaced_pod(namespace=NAMESPACE, label_selector=f"app={upf_name}")
+            if pods.items:
+                for pod in pods.items:
+                    # Update the CPU resource request/limit
+                    pod_name = pod.metadata.name
+                    # Create a patch to update the CPU resources
+                    patch ={
+                        "spec": {
+                            "containers": [{
+                                "name": upf_name,  
+                                    "resources": {
+                                        "limits": {
+                                            "cpu": new_cpu
+                                        }
+                                    }
+                            }]
+                        }
+                    }
+                    self.v1.patch_namespaced_pod(name=pod_name, namespace=NAMESPACE, body=patch)
+                    print(f"[SUCCESS] Updated CPU for pod {pod_name} to {new_cpu}")
+            else:
+                print(f"[ERROR] No pods found for UPF {upf_name}")
+        except Exception as e:
+            print(f"[ERROR] Failed to update CPU for UPF {upf_name}: {e}")
+
+    def update_pod_bandwidth(self, upf_name, new_bandwidth):
+        try:
+            pods = self.v1.list_namespaced_pod(namespace=NAMESPACE, label_selector=f"app={upf_name}")
+            if pods.items:
+                for pod in pods.items:
+                    pod_name = pod.metadata.name
+                    patch = {
+                        "metadata": {
+                            "annotations" : {
+                                "qos.projectcalico.org/ingressBandwidth":new_bandwidth,
+                                "qos.projectcalico.org/egressBandwidth":new_bandwidth
+                            }
+                        }
+                    }
+                    self.v1.patch_namespaced_pod(name=pod_name, namespace=NAMESPACE, body=patch)
+                    print(f"[SUCCESS] Updated BANDWIDTH for pod {pod_name} to {new_bandwidth}")
+            else:
+                print(f"[ERROR] No pods found for UPF {upf_name}")
+        except Exception as e:
+            print(f"[ERROR] Failed to update BANDWIDTH for UPF {upf_name}: {e}")
+    
+    def update_pod_memory(self, upf_name, new_memory):
+        try:
+            # Fetch the corresponding pod
+            pods = self.v1.list_namespaced_pod(namespace=NAMESPACE, label_selector=f"app={upf_name}")
+            if pods.items:
+                for pod in pods.items:
+                    # Update the CPU resource request/limit
+                    pod_name = pod.metadata.name
+                    # Create a patch to update the CPU resources
+                    patch ={
+                        "spec": {
+                            "containers": [{
+                                "name": upf_name,  
+                                    "resources": {
+                                        "limits": {
+                                            "memory": new_memory
+                                        }
+                                    }
+                            }]
+                        }
+                    }
+                    self.v1.patch_namespaced_pod(name=pod_name, namespace=NAMESPACE, body=patch)
+                    print(f"[SUCCESS] Updated MEMORY for pod {pod_name} to {new_memory}")
+            else:
+                print(f"[ERROR] No pods found for UPF {upf_name}")
+        except Exception as e:
+            print(f"[ERROR] Failed to update MEMORY for UPF {upf_name}: {e}")            
 
     async def setup(self):
         print("ResourceAgent starting...")
+        try:
+            # Load Kubernetes configuration and initialize the API client
+            config.load_kube_config()
+            self.v1 = client.CoreV1Api()
+            print("ResourceAgent started and connected to Kubernetes cluster.")
+        except Exception as e:
+            print(f"Failed to connect to Kubernetes cluster: {e}")
+            await self.agent.stop()
         self.add_behaviour(self.ResourceBehavior())
         self.add_behaviour(self.AuctioneerBehavior(period=5))
         return await super().setup() 
