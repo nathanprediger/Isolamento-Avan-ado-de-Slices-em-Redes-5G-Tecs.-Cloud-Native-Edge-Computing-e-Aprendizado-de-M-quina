@@ -101,6 +101,7 @@ class ResourceAgent(Agent):
                     print(f"[AUCTION] Loser: {bid['sender']} with bid {bid['bid']}. CPU reduced to: {new_cpu}.")
                     self.agent.update_pod_cpu(bid["upf_target"], new_cpu)
                     msg.set_metadata("performative", "reject-proposal")
+                    msg.body = json.dumps({ "new_cpu": new_cpu })
                     
                 await self.send(msg)
 
@@ -115,19 +116,19 @@ class ResourceAgent(Agent):
                     # Update the CPU resource request/limit
                     pod_name = pod.metadata.name
                     # Create a patch to update the CPU resources
-                    patch ={
-                        "spec": {
-                            "containers": [{
-                                "name": upf_name,  
-                                    "resources": {
-                                        "limits": {
-                                            "cpu": new_cpu
-                                        }
-                                    }
-                            }]
+                    patch = [
+                        {
+                            "op": "replace",
+                            "path": "/spec/containers/0/resources/requests/cpu",
+                            "value": f"{int(new_cpu * 1000)}m"
+                        },
+                        {
+                            "op": "replace",
+                            "path": "/spec/containers/0/resources/limits/cpu",
+                            "value": f"{int(new_cpu * 1000)}m"
                         }
-                    }
-                    self.v1.patch_namespaced_pod(name=pod_name, namespace=NAMESPACE, body=patch)
+                    ]
+                    self.v1.patch_namespaced_pod_resize(name=pod_name, namespace=NAMESPACE, body=patch)
                     print(f"[SUCCESS] Updated CPU for pod {pod_name} to {new_cpu}")
             else:
                 print(f"[ERROR] No pods found for UPF {upf_name}")
@@ -169,6 +170,9 @@ class ResourceAgent(Agent):
                             "containers": [{
                                 "name": upf_name,  
                                     "resources": {
+                                        "requests": {
+                                            "memory": new_memory
+                                        },
                                         "limits": {
                                             "memory": new_memory
                                         }
@@ -176,7 +180,7 @@ class ResourceAgent(Agent):
                             }]
                         }
                     }
-                    self.v1.patch_namespaced_pod(name=pod_name, namespace=NAMESPACE, body=patch)
+                    self.v1.patch_namespaced_pod_resize(name=pod_name, namespace=NAMESPACE, body=patch)
                     print(f"[SUCCESS] Updated MEMORY for pod {pod_name} to {new_memory}")
             else:
                 print(f"[ERROR] No pods found for UPF {upf_name}")
