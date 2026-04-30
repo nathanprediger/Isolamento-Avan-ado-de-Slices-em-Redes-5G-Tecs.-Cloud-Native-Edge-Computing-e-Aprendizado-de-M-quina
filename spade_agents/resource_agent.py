@@ -73,13 +73,13 @@ class ResourceAgent(Agent):
                 bid_data = json.loads(bid.body)
                 bid_value = float(bid_data["bid"])
                 cpu_target = float(bid_data["cpu_target"])
-                current_cpu = float(bid_data["current_cpu"])
+                cpu_limit = float(bid_data["cpu_limit"])
                 structured_bids.append({
                     "sender": bid.sender, 
                     "bid": bid_value, 
                     "upf_target": bid_data["upf_target"],
                     "cpu_target": cpu_target,
-                    "current_cpu": current_cpu
+                    "cpu_limit": cpu_limit
 
                 })
             structured_bids.sort(key=lambda x: x["bid"], reverse=True)
@@ -87,7 +87,7 @@ class ResourceAgent(Agent):
             # Announce the result of the auction
             number_of_bids = len(structured_bids)
             # Calculate the quantity of CPU reduction for the loser(s) based on winner's cpu target
-            cpu_reduce = (structured_bids[0]["cpu_target"]-structured_bids[0]["current_cpu"])/(number_of_bids-1) if number_of_bids > 1 else 0
+            cpu_reduce = (structured_bids[0]["cpu_target"]-structured_bids[0]["cpu_limit"])/(number_of_bids-1) if number_of_bids > 1 else 0
             for i, bid in enumerate(structured_bids):
                 msg = Message(to=str(bid["sender"]))
                 if i == 0:
@@ -95,9 +95,9 @@ class ResourceAgent(Agent):
                     print(f"[AUCTION] Winner: {bid['sender']} with bid {bid['bid']}. Price to pay: {value}. CPU set to: {bid['cpu_target']}.")
                     self.agent.update_pod_cpu(bid["upf_target"], bid["cpu_target"])
                     msg.set_metadata("performative", "accept-proposal")
-                    msg.body = json.dumps({ "value": value })
+                    msg.body = json.dumps({ "value": value , "new_cpu": bid["cpu_target"] })
                 else:
-                    new_cpu = max(bid["current_cpu"]-cpu_reduce, 0.1)
+                    new_cpu = max(bid["cpu_limit"]-cpu_reduce, 0.1)
                     print(f"[AUCTION] Loser: {bid['sender']} with bid {bid['bid']}. CPU reduced to: {new_cpu}.")
                     self.agent.update_pod_cpu(bid["upf_target"], new_cpu)
                     msg.set_metadata("performative", "reject-proposal")
@@ -165,21 +165,18 @@ class ResourceAgent(Agent):
                     # Update the CPU resource request/limit
                     pod_name = pod.metadata.name
                     # Create a patch to update the CPU resources
-                    patch ={
-                        "spec": {
-                            "containers": [{
-                                "name": upf_name,  
-                                    "resources": {
-                                        "requests": {
-                                            "memory": new_memory
-                                        },
-                                        "limits": {
-                                            "memory": new_memory
-                                        }
-                                    }
-                            }]
+                    patch = [
+                        {
+                            "op": "replace",
+                            "path": "/spec/containers/0/resources/requests/memory",
+                            "value": new_memory
+                        },
+                        {
+                            "op": "replace",
+                            "path": "/spec/containers/0/resources/limits/memory",
+                            "value": new_memory
                         }
-                    }
+                    ]
                     self.v1.patch_namespaced_pod_resize(name=pod_name, namespace=NAMESPACE, body=patch)
                     print(f"[SUCCESS] Updated MEMORY for pod {pod_name} to {new_memory}")
             else:
