@@ -24,7 +24,9 @@ class ResourceAgent(Agent):
             print("[AUCTION] Initializing auctioneer behavior (runs every 5 seconds).")
             self.auction_id = 0
             # List of auction's participants
-            self.slice_agents = ["slice_video_agent@localhost","slice_iperf_agent@localhost"]
+            self.slice_agents = ["slice_video_agent@localhost"]
+            for i in range(2,10):
+                self.slice_agents.append(f"slice_iperf_agent{i}@localhost")
         
         async def run(self):
             self.auction_id += 1
@@ -74,13 +76,20 @@ class ResourceAgent(Agent):
                 bid_value = float(bid_data["bid"])
                 cpu_target = float(bid_data["cpu_target"])
                 cpu_limit = float(bid_data["cpu_limit"])
+                memory_target = float(bid_data["memory_target"])
+                memory_limit = float(bid_data["memory_limit"])
+                bw_target = float(bid_data["bw_target"])
+                bw_limit = float(bid_data["bw_limit"])
                 structured_bids.append({
                     "sender": bid.sender, 
                     "bid": bid_value, 
                     "upf_target": bid_data["upf_target"],
                     "cpu_target": cpu_target,
-                    "cpu_limit": cpu_limit
-
+                    "cpu_limit": cpu_limit,
+                    "memory_target": memory_target,
+                    "memory_limit": memory_limit,
+                    "bw_target": bw_target,
+                    "bw_limit": bw_limit
                 })
             structured_bids.sort(key=lambda x: x["bid"], reverse=True)
             
@@ -88,20 +97,30 @@ class ResourceAgent(Agent):
             number_of_bids = len(structured_bids)
             # Calculate the quantity of CPU reduction for the loser(s) based on winner's cpu target
             cpu_reduce = (structured_bids[0]["cpu_target"]-structured_bids[0]["cpu_limit"])/(number_of_bids-1) if number_of_bids > 1 else 0
+            memory_reduce = (structured_bids[0]["memory_target"]-structured_bids[0]["memory_limit"])/(number_of_bids-1) if number_of_bids > 1 else 0
+            bw_reduce = (structured_bids[0]["bw_target"]-structured_bids[0]["bw_limit"])/(number_of_bids-1) if number_of_bids > 1 else 0
+
             for i, bid in enumerate(structured_bids):
                 msg = Message(to=str(bid["sender"]))
                 if i == 0:
                     value = structured_bids[1]["bid"] if number_of_bids > 1 else bid["bid"]
-                    print(f"[AUCTION] Winner: {bid['sender']} with bid {bid['bid']}. Price to pay: {value}. CPU set to: {bid['cpu_target']}.")
+                    print(f"[AUCTION] Winner: {bid['sender']} with bid {bid['bid']}. Price to pay: {value}. CPU set to: {bid['cpu_target']}. MEM set to: {bid['memory_target']}.")
                     self.agent.update_pod_cpu(bid["upf_target"], bid["cpu_target"])
+                    self.agent.update_pod_memory(bid["upf_target"], bid["memory_target"])
+                    self.agent.update_pod_bandwidth(bid["upf_target"], bid["bw_target"])
                     msg.set_metadata("performative", "accept-proposal")
-                    msg.body = json.dumps({ "value": value , "new_cpu": bid["cpu_target"] })
+                    msg.body = json.dumps({ "value": value , "new_cpu": bid["cpu_target"], "new_memory": bid["memory_target"], "new_badnwidth": bid["bw_target"]})
                 else:
                     new_cpu = max(bid["cpu_limit"]-cpu_reduce, 0.1)
-                    print(f"[AUCTION] Loser: {bid['sender']} with bid {bid['bid']}. CPU reduced to: {new_cpu}.")
+                    new_memory = max(bid["memory_limit"]-memory_reduce, 128.0)
+                    new_bandwidth = max(bid["bw_limit"]-bw_reduce, 1.0)
+                    print(f"[AUCTION] Loser: {bid['sender']} with bid {bid['bid']}. CPU reduced to: {new_cpu}. MEM reduced to: {new_memory}. BW reduced to: {new_bandwidth}. ")
                     self.agent.update_pod_cpu(bid["upf_target"], new_cpu)
+                    self.agent.update_pod_memory(bid["upf_target"], new_memory)
+                    self.agent.update_pod_bandwidth(bid["upf_target"], new_bandwidth)
+
                     msg.set_metadata("performative", "reject-proposal")
-                    msg.body = json.dumps({ "new_cpu": new_cpu })
+                    msg.body = json.dumps({ "new_cpu": new_cpu, "new_memory": new_memory, "new_badnwidth": new_bandwidth})
                     
                 await self.send(msg)
 
@@ -144,8 +163,8 @@ class ResourceAgent(Agent):
                     patch = {
                         "metadata": {
                             "annotations" : {
-                                "qos.projectcalico.org/ingressBandwidth":new_bandwidth,
-                                "qos.projectcalico.org/egressBandwidth":new_bandwidth
+                                "qos.projectcalico.org/ingressBandwidth": f"{new_bandwidth}M",
+                                "qos.projectcalico.org/egressBandwidth": f"{new_bandwidth}M"
                             }
                         }
                     }
@@ -169,12 +188,12 @@ class ResourceAgent(Agent):
                         {
                             "op": "replace",
                             "path": "/spec/containers/0/resources/requests/memory",
-                            "value": new_memory
+                            "value": f"{int(new_memory/2)}Mi"
                         },
                         {
                             "op": "replace",
                             "path": "/spec/containers/0/resources/limits/memory",
-                            "value": new_memory
+                            "value": f"{int(new_memory)}Mi"
                         }
                     ]
                     self.v1.patch_namespaced_pod_resize(name=pod_name, namespace=NAMESPACE, body=patch)
