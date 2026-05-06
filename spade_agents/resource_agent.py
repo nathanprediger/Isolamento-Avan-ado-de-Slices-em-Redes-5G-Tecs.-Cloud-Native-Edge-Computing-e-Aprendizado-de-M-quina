@@ -109,18 +109,21 @@ class ResourceAgent(Agent):
                     self.agent.update_pod_memory(bid["upf_target"], bid["memory_target"])
                     self.agent.update_pod_bandwidth(bid["upf_target"], bid["bw_target"])
                     msg.set_metadata("performative", "accept-proposal")
-                    msg.body = json.dumps({ "value": value , "new_cpu": bid["cpu_target"], "new_memory": bid["memory_target"], "new_badnwidth": bid["bw_target"]})
+                    msg.body = json.dumps({ "value": value , "new_cpu": bid["cpu_target"], "new_memory": bid["memory_target"], "new_bandwidth": bid["bw_target"]})
                 else:
                     new_cpu = max(bid["cpu_limit"]-cpu_reduce, 0.1)
                     new_memory = max(bid["memory_limit"]-memory_reduce, 128.0)
-                    new_bandwidth = max(bid["bw_limit"]-bw_reduce, 1.0)
+                    if "video" in str(bid["sender"]):
+                        new_bandwidth = max(bid["bw_limit"]-bw_reduce, 50.0) # Never drops below 50Mbps
+                    else:
+                        new_bandwidth = max(bid["bw_limit"]-bw_reduce, 1.0)
                     print(f"[AUCTION] Loser: {bid['sender']} with bid {bid['bid']}. CPU reduced to: {new_cpu}. MEM reduced to: {new_memory}. BW reduced to: {new_bandwidth}. ")
                     self.agent.update_pod_cpu(bid["upf_target"], new_cpu)
                     self.agent.update_pod_memory(bid["upf_target"], new_memory)
                     self.agent.update_pod_bandwidth(bid["upf_target"], new_bandwidth)
 
                     msg.set_metadata("performative", "reject-proposal")
-                    msg.body = json.dumps({ "new_cpu": new_cpu, "new_memory": new_memory, "new_badnwidth": new_bandwidth})
+                    msg.body = json.dumps({ "new_cpu": new_cpu, "new_memory": new_memory, "new_bandwidth": new_bandwidth})
                     
                 await self.send(msg)
 
@@ -163,8 +166,8 @@ class ResourceAgent(Agent):
                     patch = {
                         "metadata": {
                             "annotations" : {
-                                "qos.projectcalico.org/ingressBandwidth": f"{new_bandwidth}M",
-                                "qos.projectcalico.org/egressBandwidth": f"{new_bandwidth}M"
+                                "qos.projectcalico.org/ingressBandwidth": f"{int(new_bandwidth)}M",
+                                "qos.projectcalico.org/egressBandwidth": f"{int(new_bandwidth)}M"
                             }
                         }
                     }

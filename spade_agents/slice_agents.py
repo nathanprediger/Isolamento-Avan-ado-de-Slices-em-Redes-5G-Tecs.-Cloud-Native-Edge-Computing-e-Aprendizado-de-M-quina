@@ -58,7 +58,10 @@ class SliceAgent(Agent):
                         target_cpu = cpu_limit
                         target_memory = memory_limit
                         target_bandwidth = bw_limit
-                        bid = min(budget, self.agent.base_bid * 0.1)
+                        if "video" in self.agent.name:
+                            bid = min(budget, self.agent.base_bid * 0.8) # Bids 68.0 (Beats 45.0!)
+                        else:
+                            bid = min(budget, self.agent.base_bid * 0.1)
                         print(f"[{self.agent.name}] LOW STRESS. Maintaining targets. Bidding {bid}.")
                     else:
                         target_cpu = cpu_limit
@@ -76,7 +79,7 @@ class SliceAgent(Agent):
                         "memory_target" : target_memory,
                         "memory_limit" : memory_limit,
                         "bw_target" : target_bandwidth,
-                        "bw_limtit" : bw_limit,
+                        "bw_limit" : bw_limit,
                         "upf_target" : self.agent.upf_target
                     }) 
 
@@ -87,13 +90,13 @@ class SliceAgent(Agent):
                     print(f"[{self.agent.name}] Bid accepted. Value to pay: {msg_data['value']}.")
                     self.agent.cpu_limit = msg_data["new_cpu"]
                     self.agent.memory_limit = msg_data["new_memory"]
-                    self.agent.bandwidth_limit = msg_data["new_badnwidth"]
+                    self.agent.bandwidth_limit = msg_data["new_bandwidth"]
                     self.agent.budget -= msg_data['value']
                 if msg.get_metadata("performative") == "reject-proposal":
                     msg_data = json.loads(msg.body)
                     self.agent.cpu_limit = msg_data["new_cpu"]
                     self.agent.memory_limit = msg_data["new_memory"]
-                    self.agent.bandwidth_limit = msg_data["new_badnwidth"]
+                    self.agent.bandwidth_limit = msg_data["new_bandwidth"]
                     print(f"[{self.agent.name}] Bid rejected. CPU reduced to: {self.agent.cpu_limit}. MEM reduced to: {self.agent.memory_limit}Mib. BW reduced to: {self.agent.bandwidth_limit}Mbps.")
     class ResourceMonitoring(PeriodicBehaviour):
         async def on_start(self):
@@ -121,7 +124,7 @@ class SliceAgent(Agent):
                 print("[ERROR] Failed to retrieve bandwidth usage from Prometheus.")
             
 
-            income = 15.0  # Adjust this to change how fast they recover
+            income = self.agent.income  # Adjust this to change how fast they recover
             max_budget = 200.0 # Prevent infinite wealth hoarding
             
             self.agent.budget += income
@@ -147,7 +150,7 @@ class SliceAgent(Agent):
             query = self.prom.custom_query(f"rate(container_network_receive_bytes_total{{namespace=\"{NAMESPACE}\", pod=~\"{upf_name}-.*\"}}[1m])")
             if query:
                 resource_usage = query[0]['value'][1]
-                return float(resource_usage) / (1024*1024)
+                return (float(resource_usage)*8.0) / (1024*1024)
             else:
                 return None
     def fetch_initial_limits(self):
@@ -217,6 +220,7 @@ async def main():
     slice_video_agent.base_bid = 85.0
     slice_video_agent.upf_target = "upf"
     slice_video_agent.budget = 200.0
+    slice_video_agent.income = 15.0 
 
     # Create iperf agents 
     iperf_agents = []
@@ -226,6 +230,7 @@ async def main():
         agent.base_bid = 30.0
         agent.upf_target = f"upf{i}"
         agent.budget = 100.0
+        agent.income = 5.0
         iperf_agents.append(agent)
     
     for agent in iperf_agents:
