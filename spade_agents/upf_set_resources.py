@@ -4,9 +4,9 @@ from kubernetes import client, config
 NAMESPACE = "nrprediger"
 
 # Define your desired starting limits here
-INITIAL_CPU = 0.4          # 1.0 Cores
-INITIAL_MEMORY = 512.0     # 512 MiB
-INITIAL_BANDWIDTH = 5.0  # 100 MB/s
+INITIAL_CPU = 0.5      
+INITIAL_MEMORY = 512.0  
+INITIAL_BANDWIDTH = 20.0
 # ---------------------
 
 def reset_upf_pod(v1, app_label, cpu_limit, memory_limit_mi, bw_limit_m):
@@ -69,7 +69,7 @@ def main():
     print(f"Target Initial State -> CPU: {INITIAL_CPU} | MEM: {INITIAL_MEMORY}Mi | BW: {INITIAL_BANDWIDTH}M")
 
     # Generate the list of your UPF labels: ["upf", "upf2", "upf3" ... "upf9"]
-    target_apps = [f"upf{i}" for i in range(2, 10)]
+    target_apps = [f"upf{i}" for i in range(1,10)]
 
     for app in target_apps:
         reset_upf_pod(v1, app, INITIAL_CPU, INITIAL_MEMORY, INITIAL_BANDWIDTH)

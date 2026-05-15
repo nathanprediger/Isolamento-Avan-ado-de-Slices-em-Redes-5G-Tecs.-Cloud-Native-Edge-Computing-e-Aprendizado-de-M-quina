@@ -78,6 +78,7 @@ class SliceAgent(Agent):
                         "cpu_limit" : cpu_limit,
                         "memory_target" : target_memory,
                         "memory_limit" : memory_limit,
+                        "memory_usage" : memory_usage,
                         "bw_target" : target_bandwidth,
                         "bw_limit" : bw_limit,
                         "upf_target" : self.agent.upf_target
@@ -95,9 +96,9 @@ class SliceAgent(Agent):
                 if msg.get_metadata("performative") == "reject-proposal":
                     msg_data = json.loads(msg.body)
                     self.agent.cpu_limit = msg_data["new_cpu"]
-                    self.agent.memory_limit = msg_data["new_memory"]
+                    # self.agent.memory_limit = msg_data["new_memory"]
                     self.agent.bandwidth_limit = msg_data["new_bandwidth"]
-                    print(f"[{self.agent.name}] Bid rejected. CPU reduced to: {self.agent.cpu_limit}. MEM reduced to: {self.agent.memory_limit}Mib. BW reduced to: {self.agent.bandwidth_limit}Mbps.")
+                    print(f"[{self.agent.name}] Bid rejected. CPU reduced to: {self.agent.cpu_limit}. BW reduced to: {self.agent.bandwidth_limit}Mbps.")
     class ResourceMonitoring(PeriodicBehaviour):
         async def on_start(self):
             print("[MONITORING] Starting resource monitoring behavior (runs every 5 seconds).")
@@ -217,10 +218,10 @@ class SliceAgent(Agent):
         return await super().setup()
 async def main():
     slice_video_agent = SliceAgent("slice_video_agent@localhost", "password")
-    slice_video_agent.base_bid = 85.0
-    slice_video_agent.upf_target = "upf"
+    slice_video_agent.base_bid = 70.0
+    slice_video_agent.upf_target = "upf1"
     slice_video_agent.budget = 200.0
-    slice_video_agent.income = 15.0 
+    slice_video_agent.income = 20.0 
 
     # Create iperf agents 
     iperf_agents = []
@@ -230,7 +231,7 @@ async def main():
         agent.base_bid = 30.0
         agent.upf_target = f"upf{i}"
         agent.budget = 100.0
-        agent.income = 5.0
+        agent.income = 2.0
         iperf_agents.append(agent)
     
     for agent in iperf_agents:
@@ -249,4 +250,4 @@ async def main():
             await agent.stop()
 
 if __name__ == "__main__":
-    spade.run(main(), embedded_xmpp_server=False)
+    spade.run(main(), embedded_xmpp_server=True)

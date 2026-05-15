@@ -78,8 +78,10 @@ class ResourceAgent(Agent):
                 cpu_limit = float(bid_data["cpu_limit"])
                 memory_target = float(bid_data["memory_target"])
                 memory_limit = float(bid_data["memory_limit"])
+                memory_usage = float(bid_data["memory_usage"])
                 bw_target = float(bid_data["bw_target"])
                 bw_limit = float(bid_data["bw_limit"])
+
                 structured_bids.append({
                     "sender": bid.sender, 
                     "bid": bid_value, 
@@ -88,6 +90,7 @@ class ResourceAgent(Agent):
                     "cpu_limit": cpu_limit,
                     "memory_target": memory_target,
                     "memory_limit": memory_limit,
+                    "memory_usage": memory_usage,
                     "bw_target": bw_target,
                     "bw_limit": bw_limit
                 })
@@ -112,18 +115,21 @@ class ResourceAgent(Agent):
                     msg.body = json.dumps({ "value": value , "new_cpu": bid["cpu_target"], "new_memory": bid["memory_target"], "new_bandwidth": bid["bw_target"]})
                 else:
                     new_cpu = max(bid["cpu_limit"]-cpu_reduce, 0.1)
-                    new_memory = max(bid["memory_limit"]-memory_reduce, 128.0)
+                    # It is not possible to dinamically reduce memory
+                    # new_memory = max(bid["memory_limit"]-memory_reduce, memory_usage*1.2, 128.0)
                     if "video" in str(bid["sender"]):
                         new_bandwidth = max(bid["bw_limit"]-bw_reduce, 50.0) # Never drops below 50Mbps
                     else:
                         new_bandwidth = max(bid["bw_limit"]-bw_reduce, 1.0)
-                    print(f"[AUCTION] Loser: {bid['sender']} with bid {bid['bid']}. CPU reduced to: {new_cpu}. MEM reduced to: {new_memory}. BW reduced to: {new_bandwidth}. ")
+                    print(f"[AUCTION] Loser: {bid['sender']} with bid {bid['bid']}. CPU reduced to: {new_cpu}. BW reduced to: {new_bandwidth}. ")
                     self.agent.update_pod_cpu(bid["upf_target"], new_cpu)
-                    self.agent.update_pod_memory(bid["upf_target"], new_memory)
+                    # self.agent.update_pod_memory(bid["upf_target"], new_memory)
                     self.agent.update_pod_bandwidth(bid["upf_target"], new_bandwidth)
 
                     msg.set_metadata("performative", "reject-proposal")
-                    msg.body = json.dumps({ "new_cpu": new_cpu, "new_memory": new_memory, "new_bandwidth": new_bandwidth})
+                    msg.body = json.dumps({ "new_cpu": new_cpu, 
+                                           #"new_memory": new_memory, 
+                                           "new_bandwidth": new_bandwidth})
                     
                 await self.send(msg)
 
@@ -232,4 +238,4 @@ async def main():
     await resource_agent.stop()
 
 if __name__ == "__main__":
-    spade.run(main(), embedded_xmpp_server=True)
+    spade.run(main(), embedded_xmpp_server=False)
