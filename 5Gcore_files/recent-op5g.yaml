@@ -414,7 +414,7 @@ data:
           - dev: eth0
         client:
           upf:
-            - address: upf
+            - address: upf1
               dnn: [internet, slice01]
             - address: upf2
               dnn: [internet, slice02]
@@ -473,25 +473,25 @@ data:
       info:
         - s_nssai:
           - sst: 1
-            sd: 000001
+            sd: "000001"
             dnn: [internet, slice01]
           - sst: 1
-            sd: 000002
+            sd: "000002"
             dnn: [internet, slice02]
           - sst: 1
-            sd: 000003
+            sd: "000003"
             dnn: [internet, slice03]
           - sst: 1
-            sd: 000004
+            sd: "000004"
             dnn: [internet, slice04]
           - sst: 1
-            sd: 000005
+            sd: "000005"
             dnn: [internet, slice05]
           - sst: 1
-            sd: 000006
+            sd: "000006"
             dnn: [internet, slice06]
           - sst: 1
-            sd: 000007
+            sd: "000007"
             dnn: [internet, slice07]
 
 ---
@@ -1450,23 +1450,23 @@ data:
             - uri: http://nrf:8080
               s_nssai:
                 sst: 1
-                sd: 000001
+                sd: "000001"
             - uri: http://nrf:8080
               s_nssai:
                 sst: 1
-                sd: 2
+                sd: "000002"
             - uri: http://nrf:8080
               s_nssai:
                 sst: 1
-                sd: 3
+                sd: "000003"
             - uri: http://nrf:8080
               s_nssai:
                 sst: 1
-                sd: 4
+                sd: "000004"
             - uri: http://nrf:8080
               s_nssai:
                 sst: 1
-                sd: 5
+                sd: "000005"
             - uri: http://nrf:8080
               s_nssai:
                 sst: 1

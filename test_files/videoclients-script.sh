@@ -6,21 +6,20 @@ NAMESPACE="nrprediger"
 NODE_NAME="blacksabbath"
 # Configurações do Slice de Vídeo (Slice 01)
 SLICE_SST=1
-SLICE_SD="000001"
-DNN="slice01"
-BANDWIDTH="1000M"  # Limite de banda (opcional, ex: "5M" para 5Mbps)
+SLICE_SD="000003"
+DNN="slice03"
 
 # Intervalo de IMSIs
 # Começa no IMSI final ...003 (já que o 001 e 002 você usou para testes manuais)
-START_ID=1
+START_ID=5
 # Quantidade de clientes a criar
-COUNT=10
+COUNT=1
 
 # Imagem do Player de Vídeo
-APP_IMAGE="rambo1802/dash-node:latest"
+APP_IMAGE="rambo1802/dash-node:v9"
 # =================================================
 
-echo "--- Iniciando Deploy de Clientes de Vídeo (Slice 01) ---"
+echo "--- Iniciando Deploy de Clientes de Vídeo ${DNN} ---"
 
 for (( i=0; i<$COUNT; i++ ))
 do
@@ -147,9 +146,6 @@ spec:
     metadata:
       labels:
         app: ${POD_NAME}
-      annotations:
-        # Limite de banda opcional (Calico)
-        qos.projectcalico.org/ingressBandwidth: ${BANDWIDTH}
     spec:
       nodeSelector:
         kubernetes.io/hostname: ${NODE_NAME}

@@ -4,9 +4,9 @@ from kubernetes import client, config
 NAMESPACE = "nrprediger"
 
 # Define your desired starting limits here
-INITIAL_CPU = 0.5      
+INITIAL_CPU = 0.2     
 INITIAL_MEMORY = 512.0  
-INITIAL_BANDWIDTH = 20.0
+INITIAL_BANDWIDTH = 3.0
 # ---------------------
 
 def reset_upf_pod(v1, app_label, cpu_limit, memory_limit_mi, bw_limit_m):
@@ -28,7 +28,9 @@ def reset_upf_pod(v1, app_label, cpu_limit, memory_limit_mi, bw_limit_m):
             "metadata": {
                 "annotations": {
                     "qos.projectcalico.org/ingressBandwidth": f"{int(bw_limit_m)}M",
-                    "qos.projectcalico.org/egressBandwidth": f"{int(bw_limit_m)}M"
+                    "qos.projectcalico.org/egressBandwidth": f"{int(bw_limit_m)}M",
+                    "qos.projectcalico.org/ingressBurst": f"1M", 
+                    "qos.projectcalico.org/egressBurst": f"1M"
                 }
             }
         }

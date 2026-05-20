@@ -2,6 +2,8 @@ import json
 import time
 import spade
 import asyncio
+import csv
+from datetime import datetime
 from spade.agent import Agent
 from spade.behaviour import CyclicBehaviour
 from spade.behaviour import PeriodicBehaviour
@@ -17,16 +19,22 @@ class ResourceAgent(Agent):
             return await super().on_start()
         async def run(self):
             # The agent will listen for messages containing resource requests
-            msg = await self.receive(timeout=5)
+            # msg = await self.receive(timeout=5)
+            pass
 
     class AuctioneerBehavior(PeriodicBehaviour):
         async def on_start(self):
             print("[AUCTION] Initializing auctioneer behavior (runs every 5 seconds).")
             self.auction_id = 0
             # List of auction's participants
-            self.slice_agents = ["slice_video_agent@localhost"]
-            for i in range(2,10):
-                self.slice_agents.append(f"slice_iperf_agent{i}@localhost")
+            self.slice_agents = ["gold_video", "silver_video", "bronze_video"]
+            self.slice_agents = [f"{agent}_slice@localhost" for agent in self.slice_agents]
+
+            self.log_file = "auction_history.csv"
+            with open(self.log_file, mode='w', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow(["Timestamp", "Auction_ID", "Agent", "Result", "Bid_Value", "Price_Paid", "CPU_Allocated", "BW_Allocated"])
+            print(f"[AUCTION] Logging initialized in {self.log_file}")
         
         async def run(self):
             self.auction_id += 1
@@ -96,31 +104,48 @@ class ResourceAgent(Agent):
                 })
             structured_bids.sort(key=lambda x: x["bid"], reverse=True)
             
+            winner = structured_bids.pop(0)
             # Announce the result of the auction
-            number_of_bids = len(structured_bids)
+            number_losers = len(structured_bids)
             # Calculate the quantity of CPU reduction for the loser(s) based on winner's cpu target
-            cpu_reduce = (structured_bids[0]["cpu_target"]-structured_bids[0]["cpu_limit"])/(number_of_bids-1) if number_of_bids > 1 else 0
-            memory_reduce = (structured_bids[0]["memory_target"]-structured_bids[0]["memory_limit"])/(number_of_bids-1) if number_of_bids > 1 else 0
-            bw_reduce = (structured_bids[0]["bw_target"]-structured_bids[0]["bw_limit"])/(number_of_bids-1) if number_of_bids > 1 else 0
+            cpu_reduce = (winner["cpu_target"]-winner["cpu_limit"])/(number_losers) if number_losers > 0 else 0
+            memory_reduce = (winner["memory_target"]-winner["memory_limit"])/(number_losers) if number_losers > 0 else 0
+            bw_reduce = (winner["bw_target"]-winner["bw_limit"])/(number_losers) if number_losers > 0 else 0
 
-            for i, bid in enumerate(structured_bids):
-                msg = Message(to=str(bid["sender"]))
-                if i == 0:
-                    value = structured_bids[1]["bid"] if number_of_bids > 1 else bid["bid"]
-                    print(f"[AUCTION] Winner: {bid['sender']} with bid {bid['bid']}. Price to pay: {value}. CPU set to: {bid['cpu_target']}. MEM set to: {bid['memory_target']}.")
-                    self.agent.update_pod_cpu(bid["upf_target"], bid["cpu_target"])
-                    self.agent.update_pod_memory(bid["upf_target"], bid["memory_target"])
-                    self.agent.update_pod_bandwidth(bid["upf_target"], bid["bw_target"])
-                    msg.set_metadata("performative", "accept-proposal")
-                    msg.body = json.dumps({ "value": value , "new_cpu": bid["cpu_target"], "new_memory": bid["memory_target"], "new_bandwidth": bid["bw_target"]})
-                else:
-                    new_cpu = max(bid["cpu_limit"]-cpu_reduce, 0.1)
+            actual_extracted_cpu = 0.0
+            actual_extracted_bw = 0.0
+
+            with open(self.log_file, mode='a', newline='') as file:
+                writer = csv.writer(file)
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                
+                for bid in structured_bids:
+                    msg = Message(to=str(bid["sender"]))
+                    agent_name = str(bid["sender"]).split("@")[0] # Clean up the name for logging purposes
+                    new_cpu = bid["cpu_limit"]-cpu_reduce
+                    new_bandwidth = bid["bw_limit"]-bw_reduce
+
+                    if new_cpu < 0.1:
+                        diff = bid["cpu_limit"]-0.1
+                        actual_extracted_cpu += diff
+                        new_cpu = 0.1
+                    else:
+                        actual_extracted_cpu += cpu_reduce
+
+
+                    if new_bandwidth < 1.0:
+                        diff_bw = bid["bw_limit"]-1.0
+                        actual_extracted_bw += diff_bw
+                        new_bandwidth = 1.0
+                    else:
+                        actual_extracted_bw += bw_reduce
+                    
                     # It is not possible to dinamically reduce memory
                     # new_memory = max(bid["memory_limit"]-memory_reduce, memory_usage*1.2, 128.0)
-                    if "video" in str(bid["sender"]):
-                        new_bandwidth = max(bid["bw_limit"]-bw_reduce, 50.0) # Never drops below 50Mbps
-                    else:
-                        new_bandwidth = max(bid["bw_limit"]-bw_reduce, 1.0)
+                    # if "video" in str(bid["sender"]):
+                    #     new_bandwidth = max(bid["bw_limit"]-bw_reduce, 50.0) # Never drops below 50Mbps
+                    # else:
+                    #     new_bandwidth = max(bid["bw_limit"]-bw_reduce, 1.0)
                     print(f"[AUCTION] Loser: {bid['sender']} with bid {bid['bid']}. CPU reduced to: {new_cpu}. BW reduced to: {new_bandwidth}. ")
                     self.agent.update_pod_cpu(bid["upf_target"], new_cpu)
                     # self.agent.update_pod_memory(bid["upf_target"], new_memory)
@@ -128,10 +153,32 @@ class ResourceAgent(Agent):
 
                     msg.set_metadata("performative", "reject-proposal")
                     msg.body = json.dumps({ "new_cpu": new_cpu, 
-                                           #"new_memory": new_memory, 
-                                           "new_bandwidth": new_bandwidth})
+                                        #"new_memory": new_memory, 
+                                        "new_bandwidth": new_bandwidth})
                     
-                await self.send(msg)
+                    writer.writerow([timestamp, self.auction_id, agent_name, "LOSER", bid["bid"], 0.0, new_cpu, new_bandwidth])
+
+                    await self.send(msg)
+                
+                
+                value = structured_bids[0]["bid"] if number_losers > 0 else winner["bid"]
+
+                msg_winner = Message(to=str(winner["sender"]))
+                agent_name = str(winner["sender"]).split("@")[0] # Clean up the name for logging purposes
+
+                new_cpu = winner["cpu_limit"]+actual_extracted_cpu
+                new_bandwidth = winner["bw_limit"]+actual_extracted_bw
+                self.agent.update_pod_cpu(winner["upf_target"], new_cpu)
+                self.agent.update_pod_memory(winner["upf_target"], winner["memory_target"])
+                self.agent.update_pod_bandwidth(winner["upf_target"], new_bandwidth)
+                msg_winner.set_metadata("performative", "accept-proposal")
+                msg_winner.body = json.dumps({ "value": value , "new_cpu": new_cpu, "new_memory": winner["memory_target"], "new_bandwidth": new_bandwidth})
+                
+                print(f"[AUCTION] Winner: {winner['sender']} with bid {winner['bid']}. Price to pay: {value}. CPU allocated: {new_cpu}. BW allocated: {new_bandwidth}.")
+
+                writer.writerow([timestamp, self.auction_id, agent_name, "WINNER", winner["bid"], value, new_cpu, new_bandwidth])
+                    
+                await self.send(msg_winner)
 
                 
 
@@ -222,8 +269,8 @@ class ResourceAgent(Agent):
         except Exception as e:
             print(f"Failed to connect to Kubernetes cluster: {e}")
             await self.agent.stop()
-        self.add_behaviour(self.ResourceBehavior())
-        self.add_behaviour(self.AuctioneerBehavior(period=5))
+        # self.add_behaviour(self.ResourceBehavior())
+        self.add_behaviour(self.AuctioneerBehavior(period=30))
         return await super().setup() 
 
 async def main():

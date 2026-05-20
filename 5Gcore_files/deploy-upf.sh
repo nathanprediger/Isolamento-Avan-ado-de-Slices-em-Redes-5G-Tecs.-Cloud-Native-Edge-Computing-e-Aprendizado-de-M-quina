@@ -5,9 +5,9 @@ NAMESPACE="nrprediger"
 NODE_NAME="wb-fibre-01"
 
 # A partir de qual número de UPF começar?
-START_ID=2
+START_ID=1
 # Quantos UPFs criar no total?
-COUNT=8
+COUNT=9
 # =================================================
 
 echo "--- Iniciando o Deploy Automático de UPFs ---"
@@ -104,13 +104,18 @@ spec:
       containers:
         - name: ${UPF_NAME}
           image: gradiant/open5gs:2.7.6
+          resizePolicy:
+          - resourceName: cpu
+            restartPolicy: NotRequired # Default, but explicit here
+          - resourceName: memory
+            restartPolicy: NotRequired
           resources:
             limits:
               cpu: "150m"
-              memory: "512Mi"
+              memory: "256Mi"
             requests:
               cpu: "100m"
-              memory: "256Mi"
+              memory: "128Mi"
           env:
             - name: POD_IP
               valueFrom:
@@ -249,7 +254,7 @@ spec:
     matchLabels:
       app: ${UPF_NAME}
   endpoints:
-  - interval: 30s
+  - interval: 5s
     port: tcp-9090
 EOF
 

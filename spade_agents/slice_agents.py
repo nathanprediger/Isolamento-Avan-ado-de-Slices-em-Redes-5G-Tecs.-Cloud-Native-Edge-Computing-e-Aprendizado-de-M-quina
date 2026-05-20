@@ -46,15 +46,15 @@ class SliceAgent(Agent):
                     budget = self.agent.budget
 
                     # 2. Dynamic Bidding
-                    if highest_utilization > 0.8:
-                        target_cpu = cpu_limit + 0.5 if cpu_utilization > 0.8 else cpu_limit
-                        target_memory = memory_limit + 256.0 if memory_utilization > 0.8 else memory_limit
-                        target_bandwidth = bw_limit + 20.0 if bw_utilization >0.8 else bw_limit
+                    if highest_utilization > 0.6:
+                        target_cpu = cpu_limit + 0.2 if cpu_utilization > 0.6 else cpu_limit
+                        target_memory = memory_limit + 128.0 if memory_utilization > 0.6 else memory_limit
+                        target_bandwidth = bw_limit + 3.0 if bw_utilization >0.6 else bw_limit
 
                         bid = min(budget, self.agent.base_bid * 1.5)
                         print(f"[{self.agent.name}] HIGH STRESS! Requesting CPU: {target_cpu}, MEM: {target_memory}Mi, BW: {target_bandwidth}Mbps. Bidding {bid}.")
                     
-                    elif highest_utilization < 0.4:
+                    elif highest_utilization < 0.2:
                         target_cpu = cpu_limit
                         target_memory = memory_limit
                         target_bandwidth = bw_limit
@@ -64,9 +64,9 @@ class SliceAgent(Agent):
                             bid = min(budget, self.agent.base_bid * 0.1)
                         print(f"[{self.agent.name}] LOW STRESS. Maintaining targets. Bidding {bid}.")
                     else:
-                        target_cpu = cpu_limit
+                        target_cpu = cpu_limit + 0.1 if cpu_utilization > 0.4 else cpu_limit
                         target_memory = memory_limit
-                        target_bandwidth = bw_limit
+                        target_bandwidth = bw_limit + 0.5 if bw_utilization > 0.4 else bw_limit
                         bid = min(budget, self.agent.base_bid)
                         print(f"[{self.agent.name}] COMFORTABLE. Maintaining targets. Bidding {bid}.")
                     
@@ -109,17 +109,17 @@ class SliceAgent(Agent):
             memory_usage = self.agent.prometheus_query(upf_name, "memory")
             bandwidth_usage = self.agent.prometheus_query(upf_name, "bandwidth")
 
-            if cpu_usage:
+            if cpu_usage is not None:
                 self.agent.cpu_usage = cpu_usage
             else:
                 print("[ERROR] Failed to retrieve cpu usage from Prometheus.")
             
-            if memory_usage:
+            if memory_usage is not None:
                 self.agent.memory_usage = memory_usage
             else:
                 print("[ERROR] Failed to retrieve memory usage from Prometheus.")
             
-            if bandwidth_usage:
+            if bandwidth_usage is not None:
                 self.agent.bandwidth_usage = bandwidth_usage
             else:
                 print("[ERROR] Failed to retrieve bandwidth usage from Prometheus.")
@@ -133,7 +133,7 @@ class SliceAgent(Agent):
     def prometheus_query(self, upf_name, resource):
         # Query (Ex: rate(container_cpu_usage_seconds_total{namespace="nrprediger", pod=~"upf-.*", container="upf"}[1m]))
         if resource == "cpu":
-            query = self.prom.custom_query(f"rate(container_{resource}_usage_seconds_total{{namespace=\"{NAMESPACE}\", pod=~\"{upf_name}-.*\", container=\"{upf_name}\"}}[1m])")
+            query = self.prom.custom_query(f"rate(container_{resource}_usage_seconds_total{{namespace=\"{NAMESPACE}\", pod=~\"{upf_name}-.*\", container=\"{upf_name}\"}}[40s])")
             # Print the result
             if query:
                 resource_usage = query[0]['value'][1]
@@ -148,7 +148,7 @@ class SliceAgent(Agent):
             else:
                 return None
         if resource == "bandwidth":
-            query = self.prom.custom_query(f"rate(container_network_receive_bytes_total{{namespace=\"{NAMESPACE}\", pod=~\"{upf_name}-.*\"}}[1m])")
+            query = self.prom.custom_query(f"rate(container_network_receive_bytes_total{{namespace=\"{NAMESPACE}\", pod=~\"{upf_name}-.*\"}}[40s])")
             if query:
                 resource_usage = query[0]['value'][1]
                 return (float(resource_usage)*8.0) / (1024*1024)
@@ -212,41 +212,60 @@ class SliceAgent(Agent):
     async def setup(self):
         print(f"[{self.name}] Slice Agent starting...")
         self.fetch_initial_limits()
+
+        self.cpu_usage = 0.0
+        self.memory_usage = 0.0
+        self.bandwidth_usage = 0.0
+
         self.prom = PrometheusConnect(url ="http://localhost:35235/", disable_ssl=True)
-        self.add_behaviour(self.ResourceMonitoring(period=5))
+        self.add_behaviour(self.ResourceMonitoring(period=30))
         self.add_behaviour(self.AuctionParticipant())
         return await super().setup()
 async def main():
-    slice_video_agent = SliceAgent("slice_video_agent@localhost", "password")
-    slice_video_agent.base_bid = 70.0
-    slice_video_agent.upf_target = "upf1"
-    slice_video_agent.budget = 200.0
-    slice_video_agent.income = 20.0 
-
-    # Create iperf agents 
-    iperf_agents = []
-    for i in range(2,10):
-        agent_name = f"slice_iperf_agent{i}@localhost"
-        agent = SliceAgent(agent_name, "password")
-        agent.base_bid = 30.0
-        agent.upf_target = f"upf{i}"
-        agent.budget = 100.0
-        agent.income = 2.0
-        iperf_agents.append(agent)
+    # 1. Define the Mathematical Baseline
+    BASE_BUDGET = 20.0
+    BASE_INCOME = 2.0
+    BASE_BID = 10.0
     
-    for agent in iperf_agents:
-        await agent.start()
-    await slice_video_agent.start()
-    print("SliceAgents are running...")
+    # 2. Define the 1-10 Tiers
+    PRIORITY_TIERS = {
+        #"emergency_urllc": {"weight": 10.0, "upf": "upf1"}, # Future proofing!
+        "gold_video": {"weight": 8.0, "upf": "upf1"},
+        "silver_video": {"weight": 5.0, "upf": "upf2"},
+        "bronze_video": {"weight": 3.0, "upf": "upf3"},
+        #"iot_sensor": {"weight": 1.0, "upf": "upf5"}         # Future proofing!
+    }
 
+    # 3. Create Slice Agents for each tier
+    video_agents = []
+    
+    for tier_name, config in PRIORITY_TIERS.items():
+        w = config["weight"]
+        agent_jid = f"{tier_name}_slice@localhost"
+        
+        agent = SliceAgent(agent_jid, "password")
+        agent.upf_target = config["upf"]
+        
+        # --- THE FORMULAS ---
+        agent.budget = BASE_BUDGET * w
+        agent.income = BASE_INCOME * w
+        agent.base_bid = BASE_BID * w
+        
+        video_agents.append(agent)
+        print(f"[{tier_name.upper()}] Initialized -> Income: {agent.income} | Base Bid: {agent.base_bid}")
+
+    # Start the agents
+    for agent in video_agents:
+        await agent.start()
+        
+    print("SliceAgents are running...")
 
     try:
         while True:
             await asyncio.sleep(1)
     except KeyboardInterrupt:
         print("Stopping SliceAgents...")
-        await slice_video_agent.stop()
-        for agent in iperf_agents:
+        for agent in video_agents:
             await agent.stop()
 
 if __name__ == "__main__":

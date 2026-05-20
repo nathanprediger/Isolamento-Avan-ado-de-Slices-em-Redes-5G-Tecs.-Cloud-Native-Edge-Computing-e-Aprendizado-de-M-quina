@@ -37,27 +37,37 @@ const duration = parseInt(process.env.SESSION_DURATION) || 300;
                 const video = document.querySelector("#videoPlayer");
                 const player = dashjs.MediaPlayer().create();
                 
-                player.initialize(video, url, true);
-                
-                player.updateSettings({
-                    'streaming': {
-                        'abr': {
-                            'autoSwitchBitrate': { 'video': true }
-                        }
-                    }
-                });
-                
-                player.play();
-
+                // 1. LIGAR OS EVENTOS PRIMEIRO (Para nunca perder um erro!)
                 player.on(dashjs.MediaPlayer.events.STREAM_INITIALIZED, () => console.log("browser_log: Stream Initialized"));
                 player.on(dashjs.MediaPlayer.events.ERROR, (e) => console.log("browser_log: ERRO PLAYER: " + JSON.stringify(e)));
-
-                // --- VOLTEI COM O AVISO DE TROCA DE QUALIDADE ---
                 player.on(dashjs.MediaPlayer.events.QUALITY_CHANGE_RENDERED, (e) => {
                     if (e.mediaType === 'video') {
                         console.log("browser_log: [EVENTO] >>> Qualidade alterada para indice: " + e.newQuality);
                     }
                 });
+
+                // 2. APLICAR CONFIGURACOES
+                player.updateSettings({
+                    'streaming': {
+                        'abr': {
+                            'ABRStrategy': 'abrDynamic', // Uses Buffer Occupancy instead of Network Speed!
+                            'initialBitrate': { 'audio': -1, 'video': 500 },
+                            'autoSwitchBitrate': { 'video': true }
+                        },
+                        'fragmentRequestTimeout': 60000,
+                        'manifestRequestTimeout': 10000,
+                        'retryIntervals': {
+                            'MediaSegment': 2000
+                        },
+                        'retryAttempts': {
+                            'MediaSegment': 3
+                        }
+                    }
+                });
+                
+                // 3. INICIAR O PLAYER
+                player.initialize(video, url, true);
+                player.play();
 
                 // --- LOG A CADA 5 SEGUNDOS ---
                 setInterval(() => {
@@ -96,11 +106,20 @@ const duration = parseInt(process.env.SESSION_DURATION) || 300;
     </html>
     `;
 
+    // --- REMOVI O FILTRO CEGO! AGORA VAMOS VER TUDO! ---
     page.on('console', msg => {
         const text = msg.text();
         if (text.startsWith('browser_log:')) {
             console.log(text.replace('browser_log: ', ''));
+        } else {
+            // Imprime erros nativos do Chrome
+            console.log("[CHROME DEBUG] " + text); 
         }
+    });
+    
+    // Captura erros fatais da página (ex: CDN bloqueada, erro de sintaxe)
+    page.on('pageerror', err => {
+        console.log("[CHROME FATAL ERROR] " + err.toString());
     });
 
     await page.setContent(htmlContent);
