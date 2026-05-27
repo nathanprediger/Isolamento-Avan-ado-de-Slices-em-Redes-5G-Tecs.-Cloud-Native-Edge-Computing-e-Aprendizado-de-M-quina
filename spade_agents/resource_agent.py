@@ -14,20 +14,12 @@ from kubernetes import client, config
 # CONSTANTS
 NAMESPACE = "nrprediger"
 class ResourceAgent(Agent):
-    class ResourceBehavior(CyclicBehaviour):
-        async def on_start(self):
-            return await super().on_start()
-        async def run(self):
-            # The agent will listen for messages containing resource requests
-            # msg = await self.receive(timeout=5)
-            pass
-
     class AuctioneerBehavior(PeriodicBehaviour):
         async def on_start(self):
             print("[AUCTION] Initializing auctioneer behavior (runs every 5 seconds).")
             self.auction_id = 0
             # List of auction's participants
-            self.slice_agents = ["gold_video", "silver_video", "bronze_video"]
+            self.slice_agents = ["gold", "silver", "bronze"]
             self.slice_agents = [f"{agent}_slice@localhost" for agent in self.slice_agents]
 
             self.log_file = "auction_history.csv"
@@ -142,10 +134,7 @@ class ResourceAgent(Agent):
                     
                     # It is not possible to dinamically reduce memory
                     # new_memory = max(bid["memory_limit"]-memory_reduce, memory_usage*1.2, 128.0)
-                    # if "video" in str(bid["sender"]):
-                    #     new_bandwidth = max(bid["bw_limit"]-bw_reduce, 50.0) # Never drops below 50Mbps
-                    # else:
-                    #     new_bandwidth = max(bid["bw_limit"]-bw_reduce, 1.0)
+                    # new_bandwidth = max(bid["bw_limit"]-bw_reduce, 1.0)
                     print(f"[AUCTION] Loser: {bid['sender']} with bid {bid['bid']}. CPU reduced to: {new_cpu}. BW reduced to: {new_bandwidth}. ")
                     self.agent.update_pod_cpu(bid["upf_target"], new_cpu)
                     # self.agent.update_pod_memory(bid["upf_target"], new_memory)

@@ -5,7 +5,7 @@ NAMESPACE="nrprediger"
 NODE_NAME="blacksabbath"
 
 # A partir de qual número de servidor começar?
-START_ID=2
+START_ID=1
 # Quantos servidores iperf criar no total?
 COUNT=8
 # =================================================

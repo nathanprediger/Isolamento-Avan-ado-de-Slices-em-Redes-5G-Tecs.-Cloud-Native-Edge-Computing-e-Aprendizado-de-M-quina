@@ -13,6 +13,9 @@ from prometheus_api_client import PrometheusConnect
 
 # CONSTANTS
 NAMESPACE = "nrprediger"
+BASE_BUDGET = 20.0
+BASE_INCOME = 2.0
+BASE_BID = 10.0
 
 class SliceAgent(Agent):
 
@@ -53,22 +56,25 @@ class SliceAgent(Agent):
 
                         bid = min(budget, self.agent.base_bid * 1.5)
                         print(f"[{self.agent.name}] HIGH STRESS! Requesting CPU: {target_cpu}, MEM: {target_memory}Mi, BW: {target_bandwidth}Mbps. Bidding {bid}.")
-                    
-                    elif highest_utilization < 0.2:
-                        target_cpu = cpu_limit
-                        target_memory = memory_limit
-                        target_bandwidth = bw_limit
-                        if "video" in self.agent.name:
-                            bid = min(budget, self.agent.base_bid * 0.8) # Bids 68.0 (Beats 45.0!)
-                        else:
-                            bid = min(budget, self.agent.base_bid * 0.1)
-                        print(f"[{self.agent.name}] LOW STRESS. Maintaining targets. Bidding {bid}.")
-                    else:
+                    elif highest_utilization > 0.4:
                         target_cpu = cpu_limit + 0.1 if cpu_utilization > 0.4 else cpu_limit
                         target_memory = memory_limit
                         target_bandwidth = bw_limit + 0.5 if bw_utilization > 0.4 else bw_limit
                         bid = min(budget, self.agent.base_bid)
+                        print(f"[{self.agent.name}] MODERATE STRESS. Requesting CPU: {target_cpu}, MEM: {target_memory}Mi, BW: {target_bandwidth}Mbps. Bidding {bid}.")
+                    elif highest_utilization > 0.2:
+                        target_cpu = cpu_limit
+                        target_memory = memory_limit
+                        target_bandwidth = bw_limit
+                        bid = min(budget, self.agent.base_bid) 
                         print(f"[{self.agent.name}] COMFORTABLE. Maintaining targets. Bidding {bid}.")
+                    else:
+                        target_cpu = cpu_limit
+                        target_memory = memory_limit
+                        target_bandwidth = bw_limit
+                        bid = min(budget, self.agent.base_bid * 0.1)
+                        print(f"[{self.agent.name}] LOW STRESS. Maintaining targets. Bidding {bid}.")
+
                     
                     reply = Message(to=str(msg.sender))
                     reply.set_metadata("performative", "propose")
@@ -99,6 +105,16 @@ class SliceAgent(Agent):
                     # self.agent.memory_limit = msg_data["new_memory"]
                     self.agent.bandwidth_limit = msg_data["new_bandwidth"]
                     print(f"[{self.agent.name}] Bid rejected. CPU reduced to: {self.agent.cpu_limit}. BW reduced to: {self.agent.bandwidth_limit}Mbps.")
+                
+                if msg.get_metadata("performative") == "inform":
+                    msg_data = json.loads(msg.body)
+                    new_priority = msg_data["new_priority"]
+                    self.agent.base_bid = BASE_BID * new_priority
+                    self.agent.income = BASE_INCOME * new_priority
+                    self.agent.budget = BASE_BUDGET * new_priority
+                    print(f"[{self.agent.name}] Received new priority: {new_priority}. Updated base bid: {self.agent.base_bid}, base income: {self.agent.income}, base budget: {self.agent.budget}.")
+                
+
     class ResourceMonitoring(PeriodicBehaviour):
         async def on_start(self):
             print("[MONITORING] Starting resource monitoring behavior (runs every 5 seconds).")
@@ -218,28 +234,25 @@ class SliceAgent(Agent):
         self.bandwidth_usage = 0.0
 
         self.prom = PrometheusConnect(url ="http://localhost:35235/", disable_ssl=True)
-        self.add_behaviour(self.ResourceMonitoring(period=30))
+        self.add_behaviour(self.ResourceMonitoring(period=15))
         self.add_behaviour(self.AuctionParticipant())
         return await super().setup()
 async def main():
-    # 1. Define the Mathematical Baseline
-    BASE_BUDGET = 20.0
-    BASE_INCOME = 2.0
-    BASE_BID = 10.0
     
-    # 2. Define the 1-10 Tiers
+    # 1. Define the 1-10 Tiers
     PRIORITY_TIERS = {
         #"emergency_urllc": {"weight": 10.0, "upf": "upf1"}, # Future proofing!
-        "gold_video": {"weight": 8.0, "upf": "upf1"},
-        "silver_video": {"weight": 5.0, "upf": "upf2"},
-        "bronze_video": {"weight": 3.0, "upf": "upf3"},
+        "gold": {"weight": 8.0, "upf": "upf1"},
+        "silver": {"weight": 5.0, "upf": "upf2"},
+        "bronze": {"weight": 3.0, "upf": "upf3"},
         #"iot_sensor": {"weight": 1.0, "upf": "upf5"}         # Future proofing!
     }
 
-    # 3. Create Slice Agents for each tier
-    video_agents = []
+    # 2. Create Slice Agents for each tier
+    slice_agents = []
     
     for tier_name, config in PRIORITY_TIERS.items():
+        
         w = config["weight"]
         agent_jid = f"{tier_name}_slice@localhost"
         
@@ -251,11 +264,11 @@ async def main():
         agent.income = BASE_INCOME * w
         agent.base_bid = BASE_BID * w
         
-        video_agents.append(agent)
+        slice_agents.append(agent)
         print(f"[{tier_name.upper()}] Initialized -> Income: {agent.income} | Base Bid: {agent.base_bid}")
 
     # Start the agents
-    for agent in video_agents:
+    for agent in slice_agents:
         await agent.start()
         
     print("SliceAgents are running...")
@@ -265,7 +278,7 @@ async def main():
             await asyncio.sleep(1)
     except KeyboardInterrupt:
         print("Stopping SliceAgents...")
-        for agent in video_agents:
+        for agent in slice_agents:
             await agent.stop()
 
 if __name__ == "__main__":

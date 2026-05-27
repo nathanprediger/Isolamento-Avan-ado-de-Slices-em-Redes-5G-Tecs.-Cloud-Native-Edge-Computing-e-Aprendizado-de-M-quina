@@ -1,0 +1,6 @@
+.env
+venv/
+server.db*
+*.csv
+resultados/
+metricas_scripts/resultados/

@@ -3,9 +3,9 @@
 # ================= CONFIGURAÇÕES =================
 NAMESPACE="nrprediger"
 # array contendo o start_id para cada slice
-START_ID=(17 21 25 29 33 37 41 45)
+START_ID=(25 29 33 37 41 45)
 COUNT=1
-TARGET_number=(2 3 4 5 6 7 8 9) # Alvos: iperf01, iperf02, ..., iperf08
+TARGET_number=(4 5 6 7 8 9) # Alvos: iperf01, iperf02, ..., iperf08
 PORT="5201"
 BANDWIDTH="10M"
 DURATION="600"
