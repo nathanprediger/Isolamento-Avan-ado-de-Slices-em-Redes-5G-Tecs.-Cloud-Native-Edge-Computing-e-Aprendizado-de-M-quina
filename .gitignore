@@ -4,3 +4,4 @@ server.db*
 *.csv
 resultados/
 metricas_scripts/resultados/
+spade_agents/test_prometheus.py
