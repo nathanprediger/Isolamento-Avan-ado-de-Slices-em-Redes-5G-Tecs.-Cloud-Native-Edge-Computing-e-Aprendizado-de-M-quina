@@ -31,7 +31,7 @@ const duration = parseInt(process.env.SESSION_DURATION) || 300;
             <style>video { width: 640px; height: 360px; }</style>
         </head>
         <body>
-            <video id="videoPlayer" controls muted></video>
+            <video id="videoPlayer" controls muted loop></video>
             <script>
                 const url = "${mpdUrl}";
                 const video = document.querySelector("#videoPlayer");
