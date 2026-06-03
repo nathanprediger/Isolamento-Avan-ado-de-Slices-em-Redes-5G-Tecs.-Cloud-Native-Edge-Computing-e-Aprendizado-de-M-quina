@@ -8,11 +8,17 @@ from spade.agent import Agent
 from spade.behaviour import CyclicBehaviour
 from spade.behaviour import PeriodicBehaviour
 from spade.message import Message
-from spade.template import Template
 from kubernetes import client, config
 
 # CONSTANTS
 NAMESPACE = "nrprediger"
+MINIMUM_CPU = 0.01
+MINIMUM_BW = 1.0
+MINIMUM_MEMORY = 64
+
+CORE_CPU_LIMIT = 0.15
+CORE_MEMORY_LIMIT = 384
+CORE_BW_LIMIT = 9.0
 class ResourceAgent(Agent):
     class AuctioneerBehavior(PeriodicBehaviour):
         async def on_start(self):
@@ -21,6 +27,79 @@ class ResourceAgent(Agent):
             # List of auction's participants
             self.slice_agents = ["gold", "silver", "bronze"]
             self.slice_agents = [f"{agent}_slice@localhost" for agent in self.slice_agents]
+            
+            n_slices = len(self.slice_agents)
+            cpu_limit = CORE_CPU_LIMIT/n_slices
+            memory_limit = CORE_MEMORY_LIMIT/n_slices
+            bw_limit = CORE_BW_LIMIT/n_slices
+
+            # Broadcast for auction's participants
+            for agent in self.slice_agents:
+                msg = Message(to=agent)
+                msg.set_metadata("performative", "scout")
+                msg.body = json.dumps({
+                    "base_cpu_limit" : cpu_limit,
+                    "base_memory_limit" : memory_limit,
+                    "base_bw_limit" : bw_limit
+                })
+                await self.send(msg)
+                print(f"Message sent to {agent}.")
+            
+            replies = []
+            time_limit = 2.0
+            start_time = time.time()
+
+            while time.time() - start_time < time_limit:
+                time_remaining = time_limit - (time.time() - start_time)
+                if time_remaining <= 0:
+                    break
+                msg = await self.receive(timeout=time_remaining)
+                if msg and msg.get_metadata("performative") == "limits":
+                    print(f"[AUCTION] Received reply from {msg.sender}: {msg.body}")
+                    replies.append(msg)
+            
+
+            self.free_cluster_cpu = CORE_CPU_LIMIT - sum([float(json.loads(reply.body)["cpu_limit"]) for reply in replies])
+            self.free_cluster_bw = CORE_BW_LIMIT - sum([float(json.loads(reply.body)["bw_limit"]) for reply in replies])
+            self.free_cluster_memory = CORE_MEMORY_LIMIT - sum([float(json.loads(reply.body)["memory_limit"]) for reply in replies])
+
+            for reply in replies:
+                reply_data = json.loads(reply.body)
+                if self.free_cluster_cpu < 0:
+                    if reply_data["cpu_limit"] > MINIMUM_CPU:
+                        excess_cpu = min(reply_data["cpu_limit"]-MINIMUM_CPU, -self.free_cluster_cpu)
+                        reply_data["cpu_limit"] -= excess_cpu
+                        self.agent.update_pod_cpu(reply_data["upf_target"], reply_data["cpu_limit"])
+                        self.free_cluster_cpu += excess_cpu
+                        msg = Message(to=str(reply.sender))
+                        msg.set_metadata("performative", "adjustment")
+                        msg.body = json.dumps({ "new_cpu": reply_data["cpu_limit"] })
+                        await self.send(msg)
+                if self.free_cluster_bw < 0:
+                    if reply_data["bw_limit"] > MINIMUM_BW:
+                        excess_bw = min(reply_data["bw_limit"]-MINIMUM_BW, -self.free_cluster_bw)
+                        reply_data["bw_limit"] -= excess_bw
+                        self.agent.update_pod_bandwidth(reply_data["upf_target"], reply_data["bw_limit"])
+                        self.free_cluster_bw += excess_bw
+                        msg = Message(to=str(reply.sender))
+                        msg.set_metadata("performative", "adjustment")
+                        msg.body = json.dumps({ "new_bw": reply_data["bw_limit"] })
+                        await self.send(msg)
+                if self.free_cluster_memory < 0:
+                    if reply_data["memory_limit"] > MINIMUM_MEMORY:
+                        excess_memory = min(reply_data["memory_limit"]-MINIMUM_MEMORY, -self.free_cluster_memory)
+                        reply_data["memory_limit"] -= excess_memory
+                        #self.agent.update_pod_memory(reply_data["upf_target"], reply_data["memory_limit"])
+                        self.free_cluster_memory += excess_memory
+                        # msg = Message(to=str(reply.sender))
+                        # msg.set_metadata("performative", "adjustment")
+                        # msg.body = json.dumps({ "new_mem": reply_data["memory_limit"] })
+                        # await self.send(msg)
+                if self.free_cluster_cpu >= 0 and self.free_cluster_bw >= 0 and self.free_cluster_memory >= 0:
+                    break
+            await asyncio.sleep(2)
+
+            print(f"[AUCTION] Free cluster resources calculated: CPU={self.free_cluster_cpu}, Memory={self.free_cluster_memory}Mi, BW={self.free_cluster_bw}Mbps.")
 
             self.log_file = "auction_history.csv"
             with open(self.log_file, mode='w', newline='') as file:
@@ -31,19 +110,12 @@ class ResourceAgent(Agent):
         async def run(self):
             self.auction_id += 1
             print(f"[AUCTION] Starting auction #{self.auction_id} for resource allocation.")
-            cpu_limit = 1
-            memory_limit = 1
-            bw_limit = 1
 
             # Broadcast for auction's participants
             for agent in self.slice_agents:
                 msg = Message(to=agent)
                 msg.set_metadata("performative", "cfp")
-                msg.body = json.dumps({
-                    "cpu" : f"{cpu_limit}",
-                    "memory" : f"{memory_limit}",
-                    "bandwidth" : f"{bw_limit}"
-                })
+                msg.body = json.dumps({ "auction_id": self.auction_id })
                 await self.send(msg)
                 print(f"Message sent to {agent}.")
             
@@ -100,35 +172,65 @@ class ResourceAgent(Agent):
             # Announce the result of the auction
             number_losers = len(structured_bids)
             # Calculate the quantity of CPU reduction for the loser(s) based on winner's cpu target
-            cpu_reduce = (winner["cpu_target"]-winner["cpu_limit"])/(number_losers) if number_losers > 0 else 0
-            memory_reduce = (winner["memory_target"]-winner["memory_limit"])/(number_losers) if number_losers > 0 else 0
-            bw_reduce = (winner["bw_target"]-winner["bw_limit"])/(number_losers) if number_losers > 0 else 0
 
-            actual_extracted_cpu = 0.0
-            actual_extracted_bw = 0.0
+            requested_cpu = winner["cpu_target"]-winner["cpu_limit"]
+            requested_bw = winner["bw_target"]-winner["bw_limit"]
+            requested_memory = winner["memory_target"]-winner["memory_limit"]
 
+            if requested_cpu >= self.free_cluster_cpu:
+                actual_extracted_cpu = self.free_cluster_cpu
+                cpu_reduce = (requested_cpu-self.free_cluster_cpu)/(number_losers) if (number_losers > 0) else 0
+                self.free_cluster_cpu = 0
+            else:
+                actual_extracted_cpu = requested_cpu
+                cpu_reduce = 0
+                self.free_cluster_cpu -= requested_cpu
+            
+            if requested_memory >= self.free_cluster_memory:
+                actual_extracted_memory = self.free_cluster_memory
+                memory_reduce = (requested_memory-self.free_cluster_memory)/(number_losers) if (number_losers > 0) else 0
+                self.free_cluster_memory = 0
+            else:
+                actual_extracted_memory = requested_memory
+                memory_reduce = 0
+                self.free_cluster_memory -= requested_memory
+            
+            if requested_bw >= self.free_cluster_bw:
+                actual_extracted_bw = self.free_cluster_bw
+                bw_reduce = (requested_bw-self.free_cluster_bw)/(number_losers) if (number_losers > 0) else 0
+                self.free_cluster_bw = 0
+            else:
+                actual_extracted_bw = requested_bw
+                bw_reduce = 0
+                self.free_cluster_bw -= requested_bw
+            
             with open(self.log_file, mode='a', newline='') as file:
                 writer = csv.writer(file)
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 
-                for bid in structured_bids:
+                # Ordena do menor limite para o maior, para que os mais pobres declarem falência primeiro 
+                # e repassem a dívida aos mais ricos.
+                structured_bids = sorted(structured_bids, key=lambda x: (x["bw_limit"], x["cpu_limit"]))
+                for i, bid in enumerate(structured_bids):
                     msg = Message(to=str(bid["sender"]))
                     agent_name = str(bid["sender"]).split("@")[0] # Clean up the name for logging purposes
                     new_cpu = bid["cpu_limit"]-cpu_reduce
                     new_bandwidth = bid["bw_limit"]-bw_reduce
 
-                    if new_cpu < 0.1:
-                        diff = bid["cpu_limit"]-0.1
-                        actual_extracted_cpu += diff
-                        new_cpu = 0.1
+                    if new_cpu < MINIMUM_CPU:
+                        diff_cpu = bid["cpu_limit"]-MINIMUM_CPU
+                        actual_extracted_cpu += diff_cpu
+                        new_cpu = MINIMUM_CPU
+                        cpu_reduce += (cpu_reduce - diff_cpu)/(number_losers - i - 1) if (number_losers - i -1) > 0 else cpu_reduce
                     else:
                         actual_extracted_cpu += cpu_reduce
 
 
-                    if new_bandwidth < 1.0:
-                        diff_bw = bid["bw_limit"]-1.0
+                    if new_bandwidth < MINIMUM_BW:
+                        diff_bw = bid["bw_limit"]-MINIMUM_BW
                         actual_extracted_bw += diff_bw
-                        new_bandwidth = 1.0
+                        new_bandwidth = MINIMUM_BW
+                        bw_reduce += (bw_reduce - diff_bw)/(number_losers - i - 1) if (number_losers - i -1) > 0 else bw_reduce
                     else:
                         actual_extracted_bw += bw_reduce
                     
@@ -145,7 +247,7 @@ class ResourceAgent(Agent):
                                         #"new_memory": new_memory, 
                                         "new_bandwidth": new_bandwidth})
                     
-                    writer.writerow([timestamp, self.auction_id, agent_name, "LOSER", bid["bid"], 0.0, new_cpu, new_bandwidth])
+                    writer.writerow([timestamp, self.auction_id, agent_name, "LOSER", bid["bid"], 0.0, f"{new_cpu:.2f}", f"{new_bandwidth:.2f}"])
 
                     await self.send(msg)
                 
@@ -165,7 +267,7 @@ class ResourceAgent(Agent):
                 
                 print(f"[AUCTION] Winner: {winner['sender']} with bid {winner['bid']}. Price to pay: {value}. CPU allocated: {new_cpu}. BW allocated: {new_bandwidth}.")
 
-                writer.writerow([timestamp, self.auction_id, agent_name, "WINNER", winner["bid"], value, new_cpu, new_bandwidth])
+                writer.writerow([timestamp, self.auction_id, agent_name, "WINNER", winner["bid"], value, f"{new_cpu:.2f}", f"{new_bandwidth:.2f}"])
                     
                 await self.send(msg_winner)
 

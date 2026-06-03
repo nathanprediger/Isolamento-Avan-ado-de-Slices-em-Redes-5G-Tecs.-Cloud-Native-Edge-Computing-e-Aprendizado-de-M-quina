@@ -6,17 +6,17 @@ NAMESPACE="nrprediger"
 NODE_NAME="blacksabbath"
 # Configurações do Slice de Vídeo (Slice 01)
 SLICE_SST=1
-SLICE_SD="000001"
-DNN="slice01"
+SLICE_SD="000003"
+DNN="slice03"
 
 # Intervalo de IMSIs
 # Começa no IMSI final ...003 (já que o 001 e 002 você usou para testes manuais)
-START_ID=1
+START_ID=5
 # Quantidade de clientes a criar
 COUNT=1
 
 # Imagem do Player de Vídeo
-APP_IMAGE="rambo1802/dash-node:v10"
+APP_IMAGE="rambo1802/dash-node:v11"
 # =================================================
 
 echo "--- Iniciando Deploy de Clientes de Vídeo ${DNN} ---"

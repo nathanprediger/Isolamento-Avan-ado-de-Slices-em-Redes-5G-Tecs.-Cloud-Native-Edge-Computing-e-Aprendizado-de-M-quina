@@ -50,7 +50,7 @@ const duration = parseInt(process.env.SESSION_DURATION) || 300;
                 player.updateSettings({
                     'streaming': {
                         'abr': {
-                            'ABRStrategy': 'abrDynamic', // Uses Buffer Occupancy instead of Network Speed!
+                            'ABRStrategy': 'abrThroughput', 
                             'initialBitrate': { 'audio': -1, 'video': 500 },
                             'autoSwitchBitrate': { 'video': true }
                         },

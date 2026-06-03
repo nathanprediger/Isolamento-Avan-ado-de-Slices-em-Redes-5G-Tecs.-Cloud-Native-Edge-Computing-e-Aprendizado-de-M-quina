@@ -17,6 +17,10 @@ BASE_BUDGET = 20.0
 BASE_INCOME = 2.0
 BASE_BID = 10.0
 
+HIGH_STRESS_THRESHOLD = 0.6
+MODERATE_STRESS_THRESHOLD = 0.4
+COMFORTABLE_THRESHOLD = 0.2
+
 class SliceAgent(Agent):
 
     class AuctionParticipant(CyclicBehaviour):
@@ -26,6 +30,34 @@ class SliceAgent(Agent):
             msg = await self.receive(timeout=10)
 
             if msg:
+                if msg.get_metadata("performative") == "scout":
+                    msg_data = json.loads(msg.body)
+                    self.base_cpu_limit = msg_data["base_cpu_limit"]
+                    self.base_bw_limit = msg_data["base_bw_limit"]
+                    self.base_memory_limit = msg_data["base_memory_limit"]
+                    print(f"[{self.agent.name}] Received auction parameters. Base CPU: {self.base_cpu_limit}, Base Memory: {self.base_memory_limit}Mi, Base BW: {self.base_bw_limit}Mbps.")
+
+                    reply = Message(to=str(msg.sender))
+                    reply.set_metadata("performative", "limits")
+                    reply.body = json.dumps({
+                        "cpu_limit" : self.agent.cpu_limit,
+                        "memory_limit" : self.agent.memory_limit,
+                        "bw_limit" : self.agent.bandwidth_limit,
+                        "upf_target" : self.agent.upf_target
+                    })
+                    await self.send(reply)
+                if msg.get_metadata("performative") == "adjustment":
+                    msg_data = json.loads(msg.body)
+                    if "new_cpu" in msg_data:
+                        self.agent.cpu_limit = msg_data["new_cpu"]
+                        print(f"[{self.agent.name}] Received CPU adjustment. New CPU limit: {self.agent.cpu_limit}.")
+                    if "new_bw" in msg_data:
+                        self.agent.bandwidth_limit = msg_data["new_bw"]
+                        print(f"[{self.agent.name}] Received Bandwidth adjustment. New BW limit: {self.agent.bandwidth_limit}Mbps.")
+                    if "new_mem" in msg_data:
+                        self.agent.memory_limit = msg_data["new_mem"]
+                        print(f"[{self.agent.name}] Received Memory adjustment. New Memory limit: {self.agent.memory_limit}Mi.")
+                
                 if msg.get_metadata("performative") == "cfp":
                     print(f"[{self.agent.name}] CFP receveid from Resource Agent. Calculating bid...")
                     # 1. Calculate utilization based on current CPU usage and CPU limit
@@ -38,6 +70,11 @@ class SliceAgent(Agent):
                     bw_usage = self.agent.bandwidth_usage
                     bw_limit = self.agent.bandwidth_limit
 
+                    base_cpu_limit = self.base_cpu_limit
+                    base_bw_limit = self.base_bw_limit
+                    base_mem_limit = self.base_memory_limit
+
+                    priority = self.agent.priority
 
                     cpu_utilization = (cpu_usage / cpu_limit ) if cpu_limit > 0.0 else 0.0
                     memory_utilization = (memory_usage / memory_limit) if memory_limit > 0.0 else 0.0
@@ -45,29 +82,38 @@ class SliceAgent(Agent):
                     print(f"[{self.agent.name}] Current CPU Utilization: {cpu_utilization:.2%} ({cpu_usage}/{cpu_limit})")
                     print(f"[{self.agent.name}] Current Memory Utilization: {memory_utilization:.2%} ({memory_usage}/{memory_limit})")
                     print(f"[{self.agent.name}] Current Bandwidth Utilization: {bw_utilization:.2%} ({bw_usage}Mbps/{bw_limit}Mbps)")
-                    highest_utilization = max(cpu_utilization, memory_utilization, bw_utilization)
+                    highest_utilization = max(cpu_utilization, bw_utilization)
                     budget = self.agent.budget
 
                     # 2. Dynamic Bidding
-                    if highest_utilization > 0.6:
-                        target_cpu = cpu_limit + 0.2 if cpu_utilization > 0.6 else cpu_limit
-                        target_memory = memory_limit + 128.0 if memory_utilization > 0.6 else memory_limit
-                        target_bandwidth = bw_limit + 3.0 if bw_utilization >0.6 else bw_limit
+                    if highest_utilization > HIGH_STRESS_THRESHOLD:
+                        i_max = 0.60
+                        i_min = 0.40
+                        coeff = (priority * (i_max-i_min))/(10.0) + i_min
+                        target_cpu = cpu_limit + (base_cpu_limit*coeff) if cpu_utilization > HIGH_STRESS_THRESHOLD else cpu_limit
+                        target_memory = memory_limit + (base_mem_limit*coeff) if memory_utilization > HIGH_STRESS_THRESHOLD else memory_limit
+                        target_bandwidth = bw_limit + (base_bw_limit * coeff) if bw_utilization > HIGH_STRESS_THRESHOLD else bw_limit
 
                         bid = min(budget, self.agent.base_bid * 1.5)
                         print(f"[{self.agent.name}] HIGH STRESS! Requesting CPU: {target_cpu}, MEM: {target_memory}Mi, BW: {target_bandwidth}Mbps. Bidding {bid}.")
-                    elif highest_utilization > 0.4:
-                        target_cpu = cpu_limit + 0.1 if cpu_utilization > 0.4 else cpu_limit
-                        target_memory = memory_limit
-                        target_bandwidth = bw_limit + 0.5 if bw_utilization > 0.4 else bw_limit
+                    elif highest_utilization > MODERATE_STRESS_THRESHOLD:
+                        i_max = 0.30
+                        i_min = 0.15
+                        coeff = (priority * (i_max-i_min))/(10.0) + i_min
+                        target_cpu = cpu_limit + (base_cpu_limit*coeff) if cpu_utilization > MODERATE_STRESS_THRESHOLD else cpu_limit
+                        target_memory = memory_limit + (base_mem_limit*coeff) if memory_utilization > MODERATE_STRESS_THRESHOLD else memory_limit
+                        target_bandwidth = bw_limit + (base_bw_limit * coeff) if bw_utilization > MODERATE_STRESS_THRESHOLD else bw_limit
                         bid = min(budget, self.agent.base_bid)
                         print(f"[{self.agent.name}] MODERATE STRESS. Requesting CPU: {target_cpu}, MEM: {target_memory}Mi, BW: {target_bandwidth}Mbps. Bidding {bid}.")
-                    elif highest_utilization > 0.2:
-                        target_cpu = cpu_limit
-                        target_memory = memory_limit
-                        target_bandwidth = bw_limit
+                    elif highest_utilization > COMFORTABLE_THRESHOLD:
+                        i_max = 0.10
+                        i_min = 0.05
+                        coeff = (priority * (i_max-i_min))/(10.0) + i_min
+                        target_cpu = cpu_limit + (base_cpu_limit*coeff) if cpu_utilization > COMFORTABLE_THRESHOLD else cpu_limit
+                        target_memory = memory_limit + (base_mem_limit*coeff) if memory_utilization > COMFORTABLE_THRESHOLD else memory_limit
+                        target_bandwidth = bw_limit + (base_bw_limit * coeff) if bw_utilization > COMFORTABLE_THRESHOLD else bw_limit
                         bid = min(budget, self.agent.base_bid) 
-                        print(f"[{self.agent.name}] COMFORTABLE. Maintaining targets. Bidding {bid}.")
+                        print(f"[{self.agent.name}] COMFORTABLE. Requesting CPU: {target_cpu}, MEM: {target_memory}Mi, BW: {target_bandwidth}Mbps. Bidding {bid}.")
                     else:
                         target_cpu = cpu_limit
                         target_memory = memory_limit
@@ -149,7 +195,7 @@ class SliceAgent(Agent):
     def prometheus_query(self, upf_name, resource):
         # Query (Ex: rate(container_cpu_usage_seconds_total{namespace="nrprediger", pod=~"upf-.*", container="upf"}[1m]))
         if resource == "cpu":
-            query = self.prom.custom_query(f"rate(container_{resource}_usage_seconds_total{{namespace=\"{NAMESPACE}\", pod=~\"{upf_name}-.*\", container=\"{upf_name}\"}}[40s])")
+            query = self.prom.custom_query(f"rate(container_{resource}_usage_seconds_total{{namespace=\"{NAMESPACE}\", pod=~\"{upf_name}-.*\", container=\"{upf_name}\"}}[1m])")
             # Print the result
             if query:
                 resource_usage = query[0]['value'][1]
@@ -164,7 +210,7 @@ class SliceAgent(Agent):
             else:
                 return None
         if resource == "bandwidth":
-            query = self.prom.custom_query(f"rate(container_network_receive_bytes_total{{namespace=\"{NAMESPACE}\", pod=~\"{upf_name}-.*\"}}[40s])")
+            query = self.prom.custom_query(f"rate(container_network_receive_bytes_total{{namespace=\"{NAMESPACE}\", pod=~\"{upf_name}-.*\"}}[1m])")
             if query:
                 resource_usage = query[0]['value'][1]
                 return (float(resource_usage)*8.0) / (1024*1024)
@@ -234,7 +280,7 @@ class SliceAgent(Agent):
         self.bandwidth_usage = 0.0
 
         self.prom = PrometheusConnect(url ="http://localhost:35235/", disable_ssl=True)
-        self.add_behaviour(self.ResourceMonitoring(period=15))
+        self.add_behaviour(self.ResourceMonitoring(period=20))
         self.add_behaviour(self.AuctionParticipant())
         return await super().setup()
 async def main():
@@ -260,6 +306,7 @@ async def main():
         agent.upf_target = config["upf"]
         
         # --- THE FORMULAS ---
+        agent.priority = w
         agent.budget = BASE_BUDGET * w
         agent.income = BASE_INCOME * w
         agent.base_bid = BASE_BID * w
