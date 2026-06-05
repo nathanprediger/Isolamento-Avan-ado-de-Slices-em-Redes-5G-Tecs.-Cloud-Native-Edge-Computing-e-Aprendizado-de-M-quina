@@ -1,3 +1,4 @@
+import yaml
 import json
 import time
 import spade
@@ -10,22 +11,27 @@ from spade.behaviour import PeriodicBehaviour
 from spade.message import Message
 from kubernetes import client, config
 
+with open("test_config.yaml", "r") as f:
+    test_config = yaml.safe_load(f)
+
 # CONSTANTS
 NAMESPACE = "nrprediger"
-MINIMUM_CPU = 0.01
-MINIMUM_BW = 1.0
-MINIMUM_MEMORY = 64
+MINIMUM_CPU = test_config['auction']['minimum_cpu']
+MINIMUM_BW = test_config['auction']['minimum_bw']
+MINIMUM_MEMORY = test_config['auction']['minimum_memory']
 
-CORE_CPU_LIMIT = 0.15
-CORE_MEMORY_LIMIT = 384
-CORE_BW_LIMIT = 9.0
+CORE_CPU_LIMIT = test_config['auction']['total_cpu_pool']
+CORE_MEMORY_LIMIT = test_config['auction']['total_memory_pool']
+CORE_BW_LIMIT = test_config['auction']['total_bw_pool']
+AUCTION_PERIOD = test_config['auction']['period_seconds']
+
 class ResourceAgent(Agent):
     class AuctioneerBehavior(PeriodicBehaviour):
         async def on_start(self):
             print("[AUCTION] Initializing auctioneer behavior (runs every 5 seconds).")
             self.auction_id = 0
             # List of auction's participants
-            self.slice_agents = ["gold", "silver", "bronze"]
+            self.slice_agents = [slice_name for slice_name in test_config['slices'].keys()]
             self.slice_agents = [f"{agent}_slice@localhost" for agent in self.slice_agents]
             
             n_slices = len(self.slice_agents)

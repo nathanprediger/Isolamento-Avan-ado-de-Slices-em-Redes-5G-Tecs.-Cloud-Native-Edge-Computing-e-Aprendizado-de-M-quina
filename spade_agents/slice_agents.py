@@ -1,3 +1,4 @@
+import yaml
 import json
 import resource
 import time
@@ -11,15 +12,27 @@ from spade.template import Template
 from kubernetes import client, config
 from prometheus_api_client import PrometheusConnect
 
+with open("test_config.yaml", "r") as f:
+    test_config = yaml.safe_load(f)
+
 # CONSTANTS
 NAMESPACE = "nrprediger"
-BASE_BUDGET = 20.0
-BASE_INCOME = 2.0
-BASE_BID = 10.0
+URL_PROMETHEUS = test_config['monitoring']['prometheus_url']
+BASE_BUDGET = test_config['bidding']['base_budget']
+BASE_INCOME = test_config['bidding']['base_income']
+BASE_BID = test_config['bidding']['base_bid']
+MONITORING_PERIOD = test_config['auction']['monitoring_period_seconds']
 
-HIGH_STRESS_THRESHOLD = 0.6
-MODERATE_STRESS_THRESHOLD = 0.4
-COMFORTABLE_THRESHOLD = 0.2
+HIGH_STRESS_THRESHOLD = test_config['bidding']['high_stress_threshold']
+MODERATE_STRESS_THRESHOLD = test_config['bidding']['moderate_stress_threshold']
+COMFORTABLE_THRESHOLD = test_config['bidding']['comfortable_threshold']
+
+HIGH_STRESS_COEFF_MAX = test_config['bidding']['high_stress_coeff_max']
+HIGH_STRESS_COEFF_MIN = test_config['bidding']['high_stress_coeff_min']
+MODERATE_STRESS_COEFF_MAX = test_config['bidding']['moderate_stress_coeff_max']
+MODERATE_STRESS_COEFF_MIN = test_config['bidding']['moderate_stress_coeff_min']
+COMFORTABLE_COEFF_MAX = test_config['bidding']['comfortable_coeff_max']
+COMFORTABLE_COEFF_MIN = test_config['bidding']['comfortable_coeff_min']
 
 class SliceAgent(Agent):
 
@@ -87,8 +100,8 @@ class SliceAgent(Agent):
 
                     # 2. Dynamic Bidding
                     if highest_utilization > HIGH_STRESS_THRESHOLD:
-                        i_max = 0.60
-                        i_min = 0.40
+                        i_max = HIGH_STRESS_COEFF_MAX
+                        i_min = HIGH_STRESS_COEFF_MIN
                         coeff = (priority * (i_max-i_min))/(10.0) + i_min
                         target_cpu = cpu_limit + (base_cpu_limit*coeff) if cpu_utilization > HIGH_STRESS_THRESHOLD else cpu_limit
                         target_memory = memory_limit + (base_mem_limit*coeff) if memory_utilization > HIGH_STRESS_THRESHOLD else memory_limit
@@ -97,8 +110,8 @@ class SliceAgent(Agent):
                         bid = min(budget, self.agent.base_bid * 1.5)
                         print(f"[{self.agent.name}] HIGH STRESS! Requesting CPU: {target_cpu}, MEM: {target_memory}Mi, BW: {target_bandwidth}Mbps. Bidding {bid}.")
                     elif highest_utilization > MODERATE_STRESS_THRESHOLD:
-                        i_max = 0.30
-                        i_min = 0.15
+                        i_max = MODERATE_STRESS_COEFF_MAX
+                        i_min = MODERATE_STRESS_COEFF_MIN
                         coeff = (priority * (i_max-i_min))/(10.0) + i_min
                         target_cpu = cpu_limit + (base_cpu_limit*coeff) if cpu_utilization > MODERATE_STRESS_THRESHOLD else cpu_limit
                         target_memory = memory_limit + (base_mem_limit*coeff) if memory_utilization > MODERATE_STRESS_THRESHOLD else memory_limit
@@ -106,8 +119,8 @@ class SliceAgent(Agent):
                         bid = min(budget, self.agent.base_bid)
                         print(f"[{self.agent.name}] MODERATE STRESS. Requesting CPU: {target_cpu}, MEM: {target_memory}Mi, BW: {target_bandwidth}Mbps. Bidding {bid}.")
                     elif highest_utilization > COMFORTABLE_THRESHOLD:
-                        i_max = 0.10
-                        i_min = 0.05
+                        i_max = COMFORTABLE_COEFF_MAX
+                        i_min = COMFORTABLE_COEFF_MIN
                         coeff = (priority * (i_max-i_min))/(10.0) + i_min
                         target_cpu = cpu_limit + (base_cpu_limit*coeff) if cpu_utilization > COMFORTABLE_THRESHOLD else cpu_limit
                         target_memory = memory_limit + (base_mem_limit*coeff) if memory_utilization > COMFORTABLE_THRESHOLD else memory_limit
@@ -279,19 +292,19 @@ class SliceAgent(Agent):
         self.memory_usage = 0.0
         self.bandwidth_usage = 0.0
 
-        self.prom = PrometheusConnect(url ="http://localhost:35235/", disable_ssl=True)
-        self.add_behaviour(self.ResourceMonitoring(period=20))
+        self.prom = PrometheusConnect(url =URL_PROMETHEUS, disable_ssl=True)
+        self.add_behaviour(self.ResourceMonitoring(period=MONITORING_PERIOD))
         self.add_behaviour(self.AuctionParticipant())
         return await super().setup()
 async def main():
     
     # 1. Define the 1-10 Tiers
     PRIORITY_TIERS = {
-        #"emergency_urllc": {"weight": 10.0, "upf": "upf1"}, # Future proofing!
-        "gold": {"weight": 8.0, "upf": "upf1"},
-        "silver": {"weight": 5.0, "upf": "upf2"},
-        "bronze": {"weight": 3.0, "upf": "upf3"},
-        #"iot_sensor": {"weight": 1.0, "upf": "upf5"}         # Future proofing!
+        slice_name: {
+            "weight": slice_info['initial_priority'],
+            "upf": slice_info['upf']
+        }
+        for slice_name, slice_info in test_config['slices'].items()
     }
 
     # 2. Create Slice Agents for each tier

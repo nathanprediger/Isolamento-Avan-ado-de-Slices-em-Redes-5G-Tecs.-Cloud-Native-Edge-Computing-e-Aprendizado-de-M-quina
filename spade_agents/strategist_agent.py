@@ -1,4 +1,5 @@
 import json
+import yaml
 import asyncio
 from pydantic import BaseModel, Field
 import spade
@@ -14,6 +15,16 @@ from litellm import acompletion
 load_dotenv()
 MODEL = "openai/vllm.gpt-oss-20b"
 API_KEY = os.getenv("API_KEY")
+
+with open("test_config.yaml", "r") as f:
+    config = yaml.safe_load(f)
+
+# ['gold', 'silver', 'bronze'] -> "'gold', 'silver', or 'bronze'"
+slice_names = list(config['slices'].keys())
+if len(slice_names) > 1:
+    valid_slices_str = ", ".join([f"'{s}'" for s in slice_names[:-1]]) + f", or '{slice_names[-1]}'"
+else:
+    valid_slices_str = f"'{slice_names[0]}'"
 
 class SlicePriorityUpdate(BaseModel):
     # Forces the LLM to output a string, and tells it which strings are allowed
@@ -69,35 +80,37 @@ async def main():
         api_key=API_KEY,
         temperature=0.01,
     )
-    sys_prompt = """
+
+    slices_state = ""
+    for slice_name, info in config['slices'].items():
+        slices_state += f"        - {slice_name} (Default: {info['initial_priority']})\n"
+    
+    sys_prompt = f"""
         You are an AI 5G Network Strategist orchestrating a Multi-Agent System (MAS). 
         Your job is to translate high-level human intents into economic policies for network slices competing in a resource allocation auction.
 
         ### THE NETWORK STATE
-        You manage three active network slices. Their default priority weights are:
-        - gold (Default: 8.0) - High priority, premium traffic.
-        - silver (Default: 5.0) - Medium priority, standard traffic.
-        - bronze (Default: 3.0) - Low priority, best-effort traffic.
-
+        You manage active network slices. Their default priority weights are:
+        {slices_state}
         ### THE ECONOMIC ENGINE
         You do not allocate CPU or Bandwidth directly. Instead, you control the economic parameters of the MAS. The priority weight (1.0 to 10.0) you assign directly scales a slice's purchasing power in the Vickrey auction using the following formulas:
-        - Budget (Wallet Capacity) = 20.0 * new_weight
-        - Income (Wealth Regeneration) = 2.0 * new_weight
-        - Base Bid (Auction Aggressiveness) = 10.0 * new_weight
+        - Budget (Wallet Capacity) = {config['bidding']['base_budget']} * new_weight
+        - Income (Wealth Regeneration) = {config['bidding']['base_income']} * new_weight
+        - Base Bid (Auction Aggressiveness) = {config['bidding']['base_bid']} * new_weight
 
         ### Requested Output
         When you receive a network intent, you must respond with a JSON array containing one or more objects. Include an object for EVERY slice that needs its priority adjusted.
         [
-            {
-                "target_slice": "one of 'gold', 'silver', or 'bronze'",
+            {{
+                "target_slice": "one of {valid_slices_str}",
                 "new_priority": "a float between 1.0 and 10.0",
                 "reasoning": "a brief explanation of your decision"
-            }
+            }}
         ]
 
         ### YOUR INSTRUCTIONS
         1. Analyze the incoming network intent (e.g., changes in traffic, VIP events, maintenance).
-        2. Determine WHICH slices require a priority adjustment to fulfill this intent. You may adjust one, two, or all three slices at once.
+        2. Determine WHICH slices require a priority adjustment to fulfill this intent. You may adjust one, two, or all slices at once.
         3. Calculate a new weight (between 1.0 and 10.0) for each targeted slice. Higher weights grant massive financial dominance; lower weights financially starve the slice.
         4. Provide a brief, logical reasoning for each decision.
         5. You must output ONLY a valid JSON array matching the requested schema. Do not include markdown formatting or conversational filler.

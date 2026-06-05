@@ -1,0 +1,126 @@
+# ============================================================
+# CONFIGURAÇÃO CENTRALIZADA DO TESTE 5G NETWORK SLICING
+# ============================================================
+
+# Metadados do teste
+test_metadata:
+  name: "teste_prioridade_dinamica_v1"
+  description: "Teste de mudança de prioridade com pausa de tráfego em slices prioritários"
+  timestamp: "2026-06-03"
+  duration_seconds: 900  # 15 minutos total
+
+# Parâmetros iniciais dos slices (Sincronizado com slice_agents.py)
+slices:
+  gold:
+    initial_priority: 8.0
+    upf: "upf1"
+    slice_id: "000001"
+    dnn: "slice01"
+  silver:
+    initial_priority: 5.0
+    upf: "upf2"
+    slice_id: "000002"
+    dnn: "slice02"
+  bronze:
+    initial_priority: 3.0
+    upf: "upf3"
+    slice_id: "000003"
+    dnn: "slice03"
+
+# Parâmetros do leilão (Sincronizado com resource_agent.py)
+auction:
+  period_seconds: 30          # Período original do AuctioneerBehavior
+  minimum_cpu: 0.01           # MINIMUM_CPU do resource_agent.py
+  minimum_bw: 1.0             # MINIMUM_BW do resource_agent.py
+  minimum_memory: 64          # MINIMUM_MEMORY do resource_agent.py
+  total_cpu_pool: 0.15        # CORE_CPU_LIMIT real do servidor
+  total_bw_pool: 9.0          # CORE_BW_LIMIT real do servidor
+  total_memory_pool: 384      # CORE_MEMORY_LIMIT real do servidor
+  monitoring_period_seconds: 20  # Período de monitoramento para coleta de métricas
+
+# Parâmetros de bidding dos slice agents (Sincronizado com slice_agents.py)
+bidding:
+  base_budget: 20.0
+  base_income: 2.0
+  base_bid: 10.0
+  high_stress_threshold: 0.6
+  moderate_stress_threshold: 0.4
+  comfortable_threshold: 0.2
+  # Coeficientes de incremento de recursos em HIGH STRESS
+  high_stress_coeff_max: 0.60
+  high_stress_coeff_min: 0.40
+  # Coeficientes de incremento de recursos em MODERATE STRESS
+  moderate_stress_coeff_max: 0.30
+  moderate_stress_coeff_min: 0.15
+  # Coeficientes de incremento de recursos em COMFORTABLE
+  comfortable_coeff_max: 0.10
+  comfortable_coeff_min: 0.05
+  
+
+# Eventos do teste: quando mudar prioridades, pausar/resumir tráfego
+events:
+  - timestamp: 60
+    type: "priority_change"
+    description: "Temos uma emergência de segurança pública rolando no slice bronze. Preciso que o bronze receba prioridade máxima absoluta para garantir a transmissão de vídeo das câmeras policiais. Simultaneamente, reduza drasticamente a prioridade do gold e do silver para evitar qualquer gargalo."
+    changes:
+      gold: 1.0
+      silver: 1.0
+      bronze: 10.0
+
+  - timestamp: 180
+    type: "traffic_pause"
+    description: "Gold fica ocioso para testar rebalanceamento"
+    pause_slice: "gold"
+
+  - timestamp: 300
+    type: "traffic_resume"
+    description: "Gold retoma"
+    resume_slice: "gold"
+
+  - timestamp: 420
+    type: "priority_change"
+    description: "A emergência acabou. Retorne todos os slices para as suas prioridades originais de contrato."
+    changes:
+      gold: 8.0
+      silver: 5.0
+      bronze: 3.0
+
+  - timestamp: 540
+    type: "traffic_pause"
+    description: "Silver fica ocioso para testar bronze com mais recursos livres"
+    pause_slice: "silver"
+
+  - timestamp: 720
+    type: "traffic_resume"
+    description: "Silver retoma"
+    resume_slice: "silver"
+
+# Clientes DASH a serem deployados (um por slice)
+dash_clients:
+  gold:
+    count: 1
+    start_id: 1
+    session_duration: 900
+  silver:
+    count: 1
+    start_id: 2
+    session_duration: 900
+  bronze:
+    count: 1
+    start_id: 3
+    session_duration: 900
+
+# Monitoring e coleta
+monitoring:
+  prometheus_url: "http://localhost:35235/"
+  prometheus_interval_seconds: 5
+  kubectl_logs_interval_seconds: 5
+  csv_output_dir: "resultados/"
+  event_log_file: "test_events.csv"
+  timeseries_log_file: "qoe_timeseries.csv"
+
+# Google Sheets (para saída final)
+google_sheets:
+  enabled: true
+  spreadsheet_name: "Relatorio_Testes_5G_Dinamico"
+  credentials_file: "credentials.json"
