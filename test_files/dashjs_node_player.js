@@ -4,6 +4,8 @@ const mpdUrl = process.env.MPD_URL || "http://localhost:8080/manifest.mpd";
 const duration = parseInt(process.env.SESSION_DURATION) || 300;
 
 (async () => {
+    const scriptStartTime = Date.now();  // ← NOVO: marca início do script
+    
     console.log(`[CLIENT] Iniciando Player DASH (Com Eventos de Troca)...`);
     console.log(`[CLIENT] Alvo: ${mpdUrl}`);
     console.log(`[CLIENT] Duracao do teste: ${duration}s`);
@@ -33,6 +35,7 @@ const duration = parseInt(process.env.SESSION_DURATION) || 300;
         <body>
             <video id="videoPlayer" controls muted loop></video>
             <script>
+                const scriptStartTime = Date.now();  // ← NOVO: marca início no browser também
                 const url = "${mpdUrl}";
                 const video = document.querySelector("#videoPlayer");
                 const player = dashjs.MediaPlayer().create();
@@ -42,7 +45,8 @@ const duration = parseInt(process.env.SESSION_DURATION) || 300;
                 player.on(dashjs.MediaPlayer.events.ERROR, (e) => console.log("browser_log: ERRO PLAYER: " + JSON.stringify(e)));
                 player.on(dashjs.MediaPlayer.events.QUALITY_CHANGE_RENDERED, (e) => {
                     if (e.mediaType === 'video') {
-                        console.log("browser_log: [EVENTO] >>> Qualidade alterada para indice: " + e.newQuality);
+                        const elapsedSeconds = ((Date.now() - scriptStartTime) / 1000).toFixed(1);  // ← NOVO: tempo desde início do script
+                        console.log("browser_log: [T+" + elapsedSeconds + "s] [EVENTO] >>> Qualidade alterada para indice: " + e.newQuality);
                     }
                 });
 
@@ -77,7 +81,7 @@ const duration = parseInt(process.env.SESSION_DURATION) || 300;
                             frames = video.getVideoPlaybackQuality().totalVideoFrames;
                         }
                         
-                        const time = video.currentTime.toFixed(1);
+                        const elapsedSeconds = ((Date.now() - scriptStartTime) / 1000).toFixed(1);  // ← NOVO: tempo desde início do script
                         const buffer = video.buffered.length > 0 ? video.buffered.end(0).toFixed(1) : 0;
 
                         let bitrateString = "N/A";
@@ -97,7 +101,7 @@ const duration = parseInt(process.env.SESSION_DURATION) || 300;
                             bitrateString = "Erro: " + e.message;
                         }
                         
-                        console.log("browser_log: [STATUS 5s] Tempo: " + time + "s | Frames: " + frames + " | Buffer: " + buffer + "s | Bitrate: " + bitrateString);
+                        console.log("browser_log: [T+" + elapsedSeconds + "s] [STATUS 5s] Frames: " + frames + " | Buffer: " + buffer + "s | Bitrate: " + bitrateString);
                     }
                 }, 5000);
 
@@ -106,18 +110,15 @@ const duration = parseInt(process.env.SESSION_DURATION) || 300;
     </html>
     `;
 
-    // --- REMOVI O FILTRO CEGO! AGORA VAMOS VER TUDO! ---
     page.on('console', msg => {
         const text = msg.text();
         if (text.startsWith('browser_log:')) {
             console.log(text.replace('browser_log: ', ''));
         } else {
-            // Imprime erros nativos do Chrome
             console.log("[CHROME DEBUG] " + text); 
         }
     });
     
-    // Captura erros fatais da página (ex: CDN bloqueada, erro de sintaxe)
     page.on('pageerror', err => {
         console.log("[CHROME FATAL ERROR] " + err.toString());
     });
