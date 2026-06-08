@@ -54,9 +54,15 @@ const duration = parseInt(process.env.SESSION_DURATION) || 300;
                 player.updateSettings({
                     'streaming': {
                         'abr': {
-                            'ABRStrategy': 'abrThroughput', 
+                            'ABRStrategy': 'abrDynamic', 
                             'initialBitrate': { 'audio': -1, 'video': 500 },
                             'autoSwitchBitrate': { 'video': true }
+                        },
+                        'buffer': {
+                            'fastSwitchEnabled': true,       // Substitui chunks de baixa qualidade se a rede melhorar
+                            'stableBufferTime': 15,          // Mantém o player com "fome" sondando a rede a cada 15s
+                            'bufferTimeAtTopQuality': 20,    // Limite máximo absoluto do buffer
+                            'bufferToKeep': 20
                         },
                         'fragmentRequestTimeout': 60000,
                         'manifestRequestTimeout': 10000,
