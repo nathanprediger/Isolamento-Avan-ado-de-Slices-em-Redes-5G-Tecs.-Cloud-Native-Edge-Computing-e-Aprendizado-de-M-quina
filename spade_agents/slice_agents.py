@@ -98,11 +98,23 @@ class SliceAgent(Agent):
                     highest_utilization = max(cpu_utilization, bw_utilization)
                     budget = self.agent.budget
 
+                    def calculate_coeff(priority, i_min, i_max):
+                        # 1. Normalize priority to a -1.0 to 1.0 scale
+                        p_norm = (priority - 5.0) / 5.0
+
+                        # 2. Apply a non-linear transformation to create a more aggressive curve
+                        curve = p_norm ** 3
+
+                        # 3. Transform the curve to fit between 0 and 1
+                        fator = (curve + 1.0) / 2.0
+
+                        # 4. Calculate final coefficient
+                        coeff = i_min + fator * (i_max - i_min)
+
                     # 2. Dynamic Bidding
                     if highest_utilization > HIGH_STRESS_THRESHOLD:
-                        i_max = HIGH_STRESS_COEFF_MAX
-                        i_min = HIGH_STRESS_COEFF_MIN
-                        coeff = (priority * (i_max-i_min))/(10.0) + i_min
+                        
+                        coeff = calculate_coeff(priority, HIGH_STRESS_COEFF_MIN, HIGH_STRESS_COEFF_MAX)
                         target_cpu = cpu_limit + (base_cpu_limit*coeff) if cpu_utilization > HIGH_STRESS_THRESHOLD else cpu_limit
                         target_memory = memory_limit + (base_mem_limit*coeff) if memory_utilization > HIGH_STRESS_THRESHOLD else memory_limit
                         target_bandwidth = bw_limit + (base_bw_limit * coeff) if bw_utilization > HIGH_STRESS_THRESHOLD else bw_limit
@@ -110,18 +122,16 @@ class SliceAgent(Agent):
                         bid = min(budget, self.agent.base_bid * 1.5)
                         print(f"[{self.agent.name}] HIGH STRESS! Requesting CPU: {target_cpu}, MEM: {target_memory}Mi, BW: {target_bandwidth}Mbps. Bidding {bid}.")
                     elif highest_utilization > MODERATE_STRESS_THRESHOLD:
-                        i_max = MODERATE_STRESS_COEFF_MAX
-                        i_min = MODERATE_STRESS_COEFF_MIN
-                        coeff = (priority * (i_max-i_min))/(10.0) + i_min
+                        
+                        coeff = calculate_coeff(priority, MODERATE_STRESS_COEFF_MIN, MODERATE_STRESS_COEFF_MAX)
                         target_cpu = cpu_limit + (base_cpu_limit*coeff) if cpu_utilization > MODERATE_STRESS_THRESHOLD else cpu_limit
                         target_memory = memory_limit + (base_mem_limit*coeff) if memory_utilization > MODERATE_STRESS_THRESHOLD else memory_limit
                         target_bandwidth = bw_limit + (base_bw_limit * coeff) if bw_utilization > MODERATE_STRESS_THRESHOLD else bw_limit
                         bid = min(budget, self.agent.base_bid)
                         print(f"[{self.agent.name}] MODERATE STRESS. Requesting CPU: {target_cpu}, MEM: {target_memory}Mi, BW: {target_bandwidth}Mbps. Bidding {bid}.")
                     elif highest_utilization > COMFORTABLE_THRESHOLD:
-                        i_max = COMFORTABLE_COEFF_MAX
-                        i_min = COMFORTABLE_COEFF_MIN
-                        coeff = (priority * (i_max-i_min))/(10.0) + i_min
+                        
+                        coeff = calculate_coeff(priority, COMFORTABLE_COEFF_MIN, COMFORTABLE_COEFF_MAX)
                         target_cpu = cpu_limit + (base_cpu_limit*coeff) if cpu_utilization > COMFORTABLE_THRESHOLD else cpu_limit
                         target_memory = memory_limit + (base_mem_limit*coeff) if memory_utilization > COMFORTABLE_THRESHOLD else memory_limit
                         target_bandwidth = bw_limit + (base_bw_limit * coeff) if bw_utilization > COMFORTABLE_THRESHOLD else bw_limit

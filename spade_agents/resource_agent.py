@@ -4,6 +4,7 @@ import time
 import spade
 import asyncio
 import csv
+import os
 from datetime import datetime
 from spade.agent import Agent
 from spade.behaviour import CyclicBehaviour
@@ -24,6 +25,8 @@ CORE_CPU_LIMIT = test_config['auction']['total_cpu_pool']
 CORE_MEMORY_LIMIT = test_config['auction']['total_memory_pool']
 CORE_BW_LIMIT = test_config['auction']['total_bw_pool']
 AUCTION_PERIOD = test_config['auction']['period_seconds']
+
+os.makedirs("../metricas_scripts/resultados", exist_ok=True)
 
 class ResourceAgent(Agent):
     class AuctioneerBehavior(PeriodicBehaviour):
@@ -107,7 +110,7 @@ class ResourceAgent(Agent):
 
             print(f"[AUCTION] Free cluster resources calculated: CPU={self.free_cluster_cpu}, Memory={self.free_cluster_memory}Mi, BW={self.free_cluster_bw}Mbps.")
 
-            self.log_file = "auction_history.csv"
+            self.log_file = "../metricas_scripts/resultados/auction_history.csv"
             with open(self.log_file, mode='w', newline='') as file:
                 writer = csv.writer(file)
                 writer.writerow(["Timestamp", "Auction_ID", "Agent", "Result", "Bid_Value", "Price_Paid", "CPU_Allocated", "BW_Allocated"])
@@ -175,8 +178,8 @@ class ResourceAgent(Agent):
             structured_bids.sort(key=lambda x: x["bid"], reverse=True)
             
             winner = structured_bids.pop(0)
-            # Announce the result of the auction
             number_losers = len(structured_bids)
+            value = structured_bids[0]["bid"] if number_losers > 0 else winner["bid"]
             # Calculate the quantity of CPU reduction for the loser(s) based on winner's cpu target
 
             requested_cpu = winner["cpu_target"]-winner["cpu_limit"]
@@ -258,7 +261,7 @@ class ResourceAgent(Agent):
                     await self.send(msg)
                 
                 
-                value = structured_bids[0]["bid"] if number_losers > 0 else winner["bid"]
+                
 
                 msg_winner = Message(to=str(winner["sender"]))
                 agent_name = str(winner["sender"]).split("@")[0] # Clean up the name for logging purposes
@@ -313,11 +316,12 @@ class ResourceAgent(Agent):
             if pods.items:
                 for pod in pods.items:
                     pod_name = pod.metadata.name
+                    bw_kilo = int(new_bandwidth * 1000)
                     patch = {
                         "metadata": {
                             "annotations" : {
-                                "qos.projectcalico.org/ingressBandwidth": f"{int(new_bandwidth)}M",
-                                "qos.projectcalico.org/egressBandwidth": f"{int(new_bandwidth)}M"
+                                "qos.projectcalico.org/ingressBandwidth": f"{bw_kilo}k",
+                                "qos.projectcalico.org/egressBandwidth": f"{bw_kilo}k"
                             }
                         }
                     }

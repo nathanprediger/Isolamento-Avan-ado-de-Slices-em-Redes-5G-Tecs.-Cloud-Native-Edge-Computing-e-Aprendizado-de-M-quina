@@ -16,16 +16,20 @@ slices:
     upf: "upf1"
     slice_id: "000001"
     dnn: "slice01"
+    client_pod: "ue-video-01"
   silver:
     initial_priority: 5.0
     upf: "upf2"
     slice_id: "000002"
     dnn: "slice02"
+    client_pod: "ue-video-03"
   bronze:
     initial_priority: 3.0
     upf: "upf3"
     slice_id: "000003"
     dnn: "slice03"
+    client_pod: "ue-video-05"
+
 
 # Parâmetros do leilão (Sincronizado com resource_agent.py)
 auction:
@@ -47,14 +51,14 @@ bidding:
   moderate_stress_threshold: 0.4
   comfortable_threshold: 0.2
   # Coeficientes de incremento de recursos em HIGH STRESS
-  high_stress_coeff_max: 0.60
-  high_stress_coeff_min: 0.40
+  high_stress_coeff_max: 1.0
+  high_stress_coeff_min: 0.2
   # Coeficientes de incremento de recursos em MODERATE STRESS
-  moderate_stress_coeff_max: 0.30
-  moderate_stress_coeff_min: 0.15
+  moderate_stress_coeff_max: 0.5
+  moderate_stress_coeff_min: 0.1
   # Coeficientes de incremento de recursos em COMFORTABLE
-  comfortable_coeff_max: 0.10
-  comfortable_coeff_min: 0.05
+  comfortable_coeff_max: 0.15
+  comfortable_coeff_min: 0.0
   
 
 # Eventos do teste: quando mudar prioridades, pausar/resumir tráfego

@@ -4,7 +4,7 @@ from kubernetes import client, config
 NAMESPACE = "nrprediger"
 
 # Define your desired starting limits here
-INITIAL_CPU = 0.2     
+INITIAL_CPU = 0.05  
 INITIAL_MEMORY = 512.0  
 INITIAL_BANDWIDTH = 3.0
 # ---------------------
@@ -49,8 +49,8 @@ def reset_upf_pod(v1, app_label, cpu_limit, memory_limit_mi, bw_limit_m):
         resource_patch = [
             {"op": "replace", "path": "/spec/containers/0/resources/requests/cpu", "value": f"{int(cpu_limit * 1000)}m"},
             {"op": "replace", "path": "/spec/containers/0/resources/limits/cpu", "value": f"{int(cpu_limit * 1000)}m"},
-            {"op": "replace", "path": "/spec/containers/0/resources/requests/memory", "value": f"{mem_request}Mi"},
-            {"op": "replace", "path": "/spec/containers/0/resources/limits/memory", "value": f"{int(memory_limit_mi)}Mi"}
+            # {"op": "replace", "path": "/spec/containers/0/resources/requests/memory", "value": f"{mem_request}Mi"},
+            # {"op": "replace", "path": "/spec/containers/0/resources/limits/memory", "value": f"{int(memory_limit_mi)}Mi"}
         ]
         try:
             v1.patch_namespaced_pod_resize(name=pod_name, namespace=NAMESPACE, body=resource_patch)
