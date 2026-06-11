@@ -111,6 +111,8 @@ class SliceAgent(Agent):
                         # 4. Calculate final coefficient
                         coeff = i_min + fator * (i_max - i_min)
 
+                        return coeff
+
                     # 2. Dynamic Bidding
                     if highest_utilization > HIGH_STRESS_THRESHOLD:
                         
