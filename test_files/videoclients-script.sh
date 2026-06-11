@@ -16,7 +16,7 @@ START_ID=5
 COUNT=1
 
 # Imagem do Player de Vídeo
-APP_IMAGE="rambo1802/dash-node:v13"
+APP_IMAGE="rambo1802/dash-node:v18"
 # =================================================
 
 echo "--- Iniciando Deploy de Clientes de Vídeo ${DNN} ---"
