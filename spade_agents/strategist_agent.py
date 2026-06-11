@@ -147,7 +147,7 @@ async def main():
         print("Type 'exit' to quit\n")
 
         # Run interactive chat
-        await user_agent.run_interactive(response_timeout=40.0)
+        await user_agent.run_interactive(response_timeout=15.0)
 
     except KeyboardInterrupt:
         print("\n👋 Shutting down...")
