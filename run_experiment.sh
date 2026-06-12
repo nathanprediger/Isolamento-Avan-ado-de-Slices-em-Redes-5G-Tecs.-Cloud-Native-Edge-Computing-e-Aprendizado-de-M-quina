@@ -43,12 +43,15 @@ echo "5️⃣ Executando rollout nos clientes ue-video no Kubernetes..."
 run_in_terminal "Rollout DASH" "./test_files" "kubectl rollout restart deployment/ue-video-01 deployment/ue-video-03 deployment/ue-video-05 -n nrprediger"
 
 echo "⏳ Aguardando 30 segundos para os vídeos inicializarem no cluster..."
-sleep 30
+sleep 20
 
 # 5. Iniciar a Orquestração e a Coleta (Acontecendo simultaneamente)
 echo "5️⃣ Iniciando Orquestrador e Sensores..."
-run_in_terminal "Coletor QoE" "./metricas_scripts" "python3 analise_metricas_timeseries.py 5 900"
 run_in_terminal "Orquestrador" "./metricas_scripts" "python3 deploy_test.py ../spade_agents/test_config.yaml"
+sleep 40
+run_in_terminal "Coletor QoE" "./metricas_scripts" "python3 analise_metricas_timeseries.py 5 860"
+
+
 
 echo "✅ Todos os componentes foram iniciados com sucesso!"
 echo "⚠️ Atenção: Quando o teste acabar (15 minutos), feche as janelas dos agentes Python."
