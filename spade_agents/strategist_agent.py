@@ -15,8 +15,8 @@ from litellm import acompletion
 load_dotenv()
 MODEL = "openai/vllm.gpt-oss-20b"
 API_KEY = os.getenv("API_KEY")
-
-with open("test_config.yaml", "r") as f:
+TEST_CONFIG_PATH = os.getenv("TEST_FILE")
+with open(TEST_CONFIG_PATH, "r") as f:
     config = yaml.safe_load(f)
 
 # ['gold', 'silver', 'bronze'] -> "'gold', 'silver', or 'bronze'"

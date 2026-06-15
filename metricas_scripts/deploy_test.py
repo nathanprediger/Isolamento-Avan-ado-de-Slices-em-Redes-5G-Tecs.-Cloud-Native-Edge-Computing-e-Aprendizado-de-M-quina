@@ -11,11 +11,17 @@ import json
 import time
 import subprocess
 import sys
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv()
+TEST_CONFIG_PATH = os.getenv("TEST_FILE")
+
 
 class TestOrchestrator:
-    def __init__(self, config_file="../spade_agents/test_config.yaml"):
+    def __init__(self, config_file=TEST_CONFIG_PATH):
         self.config_file = config_file
         self.config = self.load_config()
         self.start_time = None
@@ -182,6 +188,6 @@ class TestOrchestrator:
             print(f"\n[ERRO] {e}")
 
 if __name__ == "__main__":
-    config_file = sys.argv[1] if len(sys.argv) > 1 else "../spade_agents/test_config.yaml"
+    config_file = sys.argv[1] if len(sys.argv) > 1 else TEST_CONFIG_PATH
     orchestrator = TestOrchestrator(config_file)
     orchestrator.run()

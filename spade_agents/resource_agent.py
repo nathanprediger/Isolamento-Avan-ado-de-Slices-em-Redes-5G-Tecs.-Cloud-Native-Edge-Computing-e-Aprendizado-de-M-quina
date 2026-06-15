@@ -11,8 +11,11 @@ from spade.behaviour import CyclicBehaviour
 from spade.behaviour import PeriodicBehaviour
 from spade.message import Message
 from kubernetes import client, config
+from dotenv import load_dotenv
 
-with open("test_config.yaml", "r") as f:
+load_dotenv()
+TEST_CONFIG_PATH = os.getenv("TEST_FILE")
+with open(TEST_CONFIG_PATH, "r") as f:
     test_config = yaml.safe_load(f)
 
 # CONSTANTS

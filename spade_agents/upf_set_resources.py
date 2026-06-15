@@ -1,12 +1,19 @@
 from kubernetes import client, config
+from dotenv import load_dotenv
+import yaml
+import os
 
+load_dotenv()
+TEST_CONFIG_PATH = os.getenv("TEST_FILE")
+with open(TEST_CONFIG_PATH, "r") as f:
+    test_config = yaml.safe_load(f)
 # --- CONFIGURATION ---
 NAMESPACE = "nrprediger"
 
 # Define your desired starting limits here
-INITIAL_CPU = 0.05  
-INITIAL_MEMORY = 512.0  
-INITIAL_BANDWIDTH = 3.0
+INITIAL_CPU = test_config["initial_parameters"]["cpu"] 
+INITIAL_MEMORY = test_config["initial_parameters"]["memory"]
+INITIAL_BANDWIDTH = test_config["initial_parameters"]["bandwidth"]
 # ---------------------
 
 def reset_upf_pod(v1, app_label, cpu_limit, memory_limit_mi, bw_limit_m):
