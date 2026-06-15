@@ -66,42 +66,42 @@ bidding:
   
 
 # Eventos do teste: quando mudar prioridades, pausar/resumir tráfego
-# events:
-  # - timestamp: 60
-  #   type: "priority_change"
-  #   description: "Temos uma emergência de segurança pública rolando no slice bronze. Preciso que o bronze receba prioridade máxima absoluta para garantir a transmissão de vídeo das câmeras policiais. Simultaneamente, reduza drasticamente a prioridade do gold e do silver para evitar qualquer gargalo."
-  #   changes:
-  #     gold: 1.0
-  #     silver: 1.0
-  #     bronze: 10.0
+events:
+  - timestamp: 60
+    type: "priority_change"
+    description: "Temos uma emergência de segurança pública rolando no slice bronze. Preciso que o bronze receba prioridade máxima absoluta para garantir a transmissão de vídeo das câmeras policiais. Simultaneamente, reduza drasticamente a prioridade do gold e do silver para evitar qualquer gargalo."
+    changes:
+      gold: 1.0
+      silver: 1.0
+      bronze: 10.0
 
-  # - timestamp: 180
-  #   type: "traffic_pause"
-  #   description: "Gold fica ocioso para testar rebalanceamento"
-  #   pause_slice: "gold"
+  - timestamp: 180
+    type: "traffic_pause"
+    description: "Gold fica ocioso para testar rebalanceamento"
+    pause_slice: "gold"
 
-  # - timestamp: 300
-  #   type: "traffic_resume"
-  #   description: "Gold retoma"
-  #   resume_slice: "gold"
+  - timestamp: 300
+    type: "traffic_resume"
+    description: "Gold retoma"
+    resume_slice: "gold"
 
-  # - timestamp: 420
-  #   type: "priority_change"
-  #   description: "A emergência acabou. Retorne todos os slices para as suas prioridades originais de contrato."
-  #   changes:
-  #     gold: 8.0
-  #     silver: 5.0
-  #     bronze: 3.0
+  - timestamp: 420
+    type: "priority_change"
+    description: "A emergência acabou. Retorne todos os slices para as suas prioridades originais de contrato."
+    changes:
+      gold: 8.0
+      silver: 5.0
+      bronze: 3.0
 
-  # - timestamp: 540
-  #   type: "traffic_pause"
-  #   description: "Silver fica ocioso para testar bronze com mais recursos livres"
-  #   pause_slice: "silver"
+  - timestamp: 540
+    type: "traffic_pause"
+    description: "Silver fica ocioso para testar bronze com mais recursos livres"
+    pause_slice: "silver"
 
-  # - timestamp: 720
-  #   type: "traffic_resume"
-  #   description: "Silver retoma"
-  #   resume_slice: "silver"
+  - timestamp: 720
+    type: "traffic_resume"
+    description: "Silver retoma"
+    resume_slice: "silver"
 # events:
 #   - timestamp: 120
 #     type: "priority_change"
@@ -176,36 +176,36 @@ bidding:
 #       silver: 5.0
 #       bronze: 3.0
 
-events:
-  - timestamp: 120
-    type: "traffic_pause"
-    description: "Slice Gold cai inesperadamente."
-    pause_slice: "gold"
+# events:
+#   - timestamp: 120
+#     type: "traffic_pause"
+#     description: "Slice Gold cai inesperadamente."
+#     pause_slice: "gold"
 
-  - timestamp: 270
-    type: "traffic_pause"
-    description: "Slice Silver cai inesperadamente. Bronze é a única sobrevivente na rede e deve absorver toda a banda disponível."
-    pause_slice: "silver"
+#   - timestamp: 270
+#     type: "traffic_pause"
+#     description: "Slice Silver cai inesperadamente. Bronze é a única sobrevivente na rede e deve absorver toda a banda disponível."
+#     pause_slice: "silver"
 
-  - timestamp: 420
-    type: "traffic_resume"
-    description: "Slice Gold é restaurada e deve retomar a liderança do leilão."
-    resume_slice: "gold"
+#   - timestamp: 420
+#     type: "traffic_resume"
+#     description: "Slice Gold é restaurada e deve retomar a liderança do leilão."
+#     resume_slice: "gold"
 
-  - timestamp: 540
-    type: "traffic_pause"
-    description: "Slice Bronze cai inesperadamente."
-    pause_slice: "bronze"
+#   - timestamp: 540
+#     type: "traffic_pause"
+#     description: "Slice Bronze cai inesperadamente."
+#     pause_slice: "bronze"
 
-  - timestamp: 660
-    type: "traffic_resume"
-    description: "Slice Silver é restaurada."
-    resume_slice: "silver"
+#   - timestamp: 660
+#     type: "traffic_resume"
+#     description: "Slice Silver é restaurada."
+#     resume_slice: "silver"
 
-  - timestamp: 780
-    type: "traffic_resume"
-    description: "Slice Bronze é restaurada. Todas as três fatias estão ativas simultaneamente para os minutos finais."
-    resume_slice: "bronze"
+#   - timestamp: 780
+#     type: "traffic_resume"
+#     description: "Slice Bronze é restaurada. Todas as três fatias estão ativas simultaneamente para os minutos finais."
+#     resume_slice: "bronze"
 
 
 # Clientes DASH a serem deployados (um por slice)
