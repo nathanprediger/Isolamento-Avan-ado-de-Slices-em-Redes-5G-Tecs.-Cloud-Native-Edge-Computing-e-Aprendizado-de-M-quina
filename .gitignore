@@ -6,3 +6,4 @@ resultados/
 metricas_scripts/resultados/
 spade_agents/test_prometheus.py
 trash/
+credentials.json

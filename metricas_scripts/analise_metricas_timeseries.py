@@ -152,7 +152,6 @@ class QoETimeSeries:
             slice_suffix = pod_parts[-3]  # "01", "02", "03"
             # build slice map from config
             slice_map = {v['client_pod'].split('-')[-1]: k for k, v in test_config.get('slices', {}).items()}
-            print(slice_map)
             slice_name = slice_map.get(slice_suffix, f"unknown-{slice_suffix}")
             
             # Coleta dados novos
