@@ -134,6 +134,7 @@ class TestOrchestrator:
             self.log_event("TRAFFIC_RESUME", f"Tráfego retomado em {slice_name}", details)
             
         except KeyError:
+
             print(f"[ERROR] Slice '{slice_name}' ou 'client_pod' não definido no YAML.")
         except Exception as e:
             print(f"[ERROR] Falha ao retomar tráfego: {e}")
@@ -149,33 +150,34 @@ class TestOrchestrator:
         self.start_time = datetime.now()
         self.log_event("TEST_START", "Teste iniciado", f"Config: {self.config_file}")
         
-        events = sorted(self.config['events'], key=lambda e: e['timestamp'])
-        
         try:
-            for event in events:
-                timestamp = event['timestamp']
-                event_type = event['type']
-                description = event['description']
-                
-                # Aguarda o tempo do evento
-                while (datetime.now() - self.start_time).total_seconds() < timestamp:
-                    time.sleep(1)
-                
-                # Executa o evento
-                if event_type == "priority_change":
-                    self.change_priority(event['changes'], event['description'])
-                
-                elif event_type == "traffic_pause":
-                    self.pause_traffic(event['pause_slice'])
-                
-                elif event_type == "traffic_resume":
-                    self.resume_traffic(event['resume_slice'])
-            
+            if self.config['events']:
+                events = sorted(self.config['events'], key=lambda e: e['timestamp'])
+        
+                for event in events:
+                    timestamp = event['timestamp']
+                    event_type = event['type']
+                    description = event['description']
+                    
+                    # Aguarda o tempo do evento
+                    while (datetime.now() - self.start_time).total_seconds() < timestamp:
+                        time.sleep(1)
+                    
+                    # Executa o evento
+                    if event_type == "priority_change":
+                        self.change_priority(event['changes'], event['description'])
+                    
+                    elif event_type == "traffic_pause":
+                        self.pause_traffic(event['pause_slice'])
+                    
+                    elif event_type == "traffic_resume":
+                        self.resume_traffic(event['resume_slice'])   
+
             # Aguarda até o fim do teste
             total_duration = self.config['test_metadata']['duration_seconds']
             while (datetime.now() - self.start_time).total_seconds() < total_duration:
                 time.sleep(5)
-            
+                
             self.log_event("TEST_END", "Teste finalizado", "")
             print("\n[SUCESSO] Teste concluído!")
             

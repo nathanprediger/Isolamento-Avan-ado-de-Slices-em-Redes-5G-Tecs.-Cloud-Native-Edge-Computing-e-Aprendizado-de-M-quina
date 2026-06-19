@@ -28,8 +28,9 @@ CORE_CPU_LIMIT = test_config['auction']['total_cpu_pool']
 CORE_MEMORY_LIMIT = test_config['auction']['total_memory_pool']
 CORE_BW_LIMIT = test_config['auction']['total_bw_pool']
 AUCTION_PERIOD = test_config['auction']['period_seconds']
-
-os.makedirs("../metricas_scripts/resultados", exist_ok=True)
+RESULTS_DIR = test_config['monitoring']['csv_output_dir']
+AUCTION_LOG_FILE = test_config['monitoring']['auction_log_file']
+os.makedirs(RESULTS_DIR, exist_ok=True)
 
 class ResourceAgent(Agent):
     class AuctioneerBehavior(PeriodicBehaviour):
@@ -113,11 +114,12 @@ class ResourceAgent(Agent):
 
             print(f"[AUCTION] Free cluster resources calculated: CPU={self.free_cluster_cpu}, Memory={self.free_cluster_memory}Mi, BW={self.free_cluster_bw}Mbps.")
 
-            self.log_file = "../metricas_scripts/resultados/auction_history.csv"
+            self.log_file = RESULTS_DIR + AUCTION_LOG_FILE
             with open(self.log_file, mode='w', newline='') as file:
                 writer = csv.writer(file)
                 writer.writerow(["Timestamp", "Auction_ID", "Agent", "Result", "Bid_Value", "Price_Paid", "CPU_Allocated", "BW_Allocated"])
             print(f"[AUCTION] Logging initialized in {self.log_file}")
+            
         
         async def run(self):
             self.auction_id += 1
@@ -272,7 +274,7 @@ class ResourceAgent(Agent):
                 new_cpu = winner["cpu_limit"]+actual_extracted_cpu
                 new_bandwidth = winner["bw_limit"]+actual_extracted_bw
                 self.agent.update_pod_cpu(winner["upf_target"], new_cpu)
-                self.agent.update_pod_memory(winner["upf_target"], winner["memory_target"])
+                #self.agent.update_pod_memory(winner["upf_target"], winner["memory_target"])
                 self.agent.update_pod_bandwidth(winner["upf_target"], new_bandwidth)
                 msg_winner.set_metadata("performative", "accept-proposal")
                 msg_winner.body = json.dumps({ "value": value , "new_cpu": new_cpu, "new_memory": winner["memory_target"], "new_bandwidth": new_bandwidth})

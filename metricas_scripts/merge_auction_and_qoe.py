@@ -5,7 +5,7 @@ Auction and QoE Data Correlation
 Merges auction_history.csv, test_events.csv, and qoe_timeseries.csv
 to create a unified test analysis and generate graphs.
 """
-
+import os
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -17,11 +17,12 @@ from pathlib import Path
 warnings.filterwarnings('ignore')
 
 class DataCorrelator:
-    def __init__(self, output_dir="resultados/"):
+    def __init__(self, input_dir = "resultados/", output_dir="resultados/teste/"):
         self.output_dir = output_dir
-        self.auction_file = f"{output_dir}auction_history.csv"
-        self.events_file = f"{output_dir}test_events.csv"
-        self.timeseries_file = f"{output_dir}qoe_timeseries.csv"
+        self.input_dir = input_dir
+        self.auction_file = f"{input_dir}auction_history.csv"
+        self.events_file = f"{input_dir}test_events.csv"
+        self.timeseries_file = f"{input_dir}qoe_timeseries.csv"
         self.correlation_file = f"{output_dir}correlation_analysis.csv"
         
     def load_data(self):
@@ -108,8 +109,8 @@ class DataCorrelator:
         period_stats = timeseries_df.groupby(['Period', 'Slice']).agg({
             'Bitrate_kbps': 'mean',
             'Buffer_Seconds': 'mean',
-            'Quality_Switches': 'sum',
-            'Stalls': 'sum'
+            'Quality_Switches': 'max',
+            'Stalls': 'max'
         }).reset_index()
         
         if events_df is not None:
@@ -236,6 +237,8 @@ class DataCorrelator:
         print("="*70)
 
 if __name__ == "__main__":
-    output_dir = sys.argv[1] if len(sys.argv) > 1 else "resultados/"
-    correlator = DataCorrelator(output_dir)
+    input_dir = sys.argv[1] if len(sys.argv) > 1 else "resultados/"
+    output_dir = sys.argv[2] if len(sys.argv) > 2 else "resultados/teste/"
+    os.makedirs(output_dir, exist_ok=True)
+    correlator = DataCorrelator(input_dir, output_dir)
     correlator.generate_report()

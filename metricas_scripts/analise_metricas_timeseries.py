@@ -13,17 +13,25 @@ import json
 import sys
 import time
 import threading
+import os
+import yaml
 from datetime import datetime
 from pathlib import Path
 from collections import defaultdict
+from dotenv import load_dotenv
+
+load_dotenv()
+TEST_CONFIG_PATH = os.getenv("TEST_FILE")
+with open(TEST_CONFIG_PATH, "r") as f:
+    test_config = yaml.safe_load(f)
 
 class QoETimeSeries:
-    def __init__(self, namespace="nrprediger", output_dir="resultados/"):
+    def __init__(self, namespace="nrprediger", output_dir=test_config["monitoring"]["csv_output_dir"]):
         self.namespace = namespace
         self.output_dir = output_dir
         self.pod_prefix = "ue-video-"
         self.container_name = "dash-client"
-        self.timeseries_file = f"{output_dir}qoe_timeseries.csv"
+        self.timeseries_file = f"{output_dir}{test_config['monitoring']['timeseries_log_file']}"
         self.test_start_time = None
         self.pod_data = defaultdict(dict)
         self.latest_positions = defaultdict(int)  # Rastreia última linha lida de cada pod
@@ -142,7 +150,9 @@ class QoETimeSeries:
             # Extrai o nome do slice do pod (ue-video-XX)
             pod_parts = pod.split('-')
             slice_suffix = pod_parts[-3]  # "01", "02", "03"
-            slice_map = {"01": "gold", "03": "silver", "05": "bronze"}
+            # build slice map from config
+            slice_map = {v['client_pod'].split('-')[-1]: k for k, v in test_config.get('slices', {}).items()}
+            print(slice_map)
             slice_name = slice_map.get(slice_suffix, f"unknown-{slice_suffix}")
             
             # Coleta dados novos

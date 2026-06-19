@@ -42,7 +42,7 @@ echo "5️⃣ Executando rollout nos clientes ue-video no Kubernetes..."
 # Se foram criados via StatefulSet ou Job, altere a palavra 'deployment' abaixo.
 run_in_terminal "Rollout DASH" "./" "kubectl rollout restart deployment/ue-video-01 deployment/ue-video-03 deployment/ue-video-05 -n nrprediger"
 
-echo "⏳ Aguardando 30 segundos para os vídeos inicializarem no cluster..."
+echo "⏳ Aguardando 20 segundos para os vídeos inicializarem no cluster..."
 sleep 20
 
 # 5. Iniciar a Orquestração e a Coleta (Acontecendo simultaneamente)
