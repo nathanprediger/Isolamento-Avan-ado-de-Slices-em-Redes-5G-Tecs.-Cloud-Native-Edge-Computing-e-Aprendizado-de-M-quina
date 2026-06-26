@@ -65,6 +65,7 @@ const duration = parseInt(process.env.SESSION_DURATION) || 300;
                             'fastSwitchEnabled': true,       // Substitui chunks de baixa qualidade se a rede melhorar
                             'stableBufferTime': 15,          // Mantém o player com "fome" sondando a rede a cada 15s
                             'bufferTimeAtTopQuality': 20,    // Limite máximo absoluto do buffer
+                            'bufferTimeAtTopQualityLongForm': 20,
                             'bufferToKeep': 20
                         },
                         'fragmentRequestTimeout': 600000,
