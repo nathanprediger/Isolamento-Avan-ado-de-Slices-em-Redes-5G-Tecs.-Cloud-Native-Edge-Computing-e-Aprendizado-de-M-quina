@@ -187,9 +187,18 @@ def exportar_resumo_estatistico(sh, input_dir, cenario_nome):
     wks.update([stats_final.columns.values.tolist()] + stats_final.values.tolist())
     print(f"[OK] Tabela Resumo atualizada com métricas de Infraestrutura!")
 
-def exportar_dados_temporais_e_graficos(sh, input_dir, cenario_nome):
+def exportar_dados_temporais_e_graficos(sh, input_dir, cenario_nome, duracao_teste_segundos=900):
     """Agrega evolução temporal de QoE, Leilões, INFRA e injeta os Eventos nos gráficos."""
     print(f"\n[3/3] Processando Séries Temporais para os Gráficos...")
+
+    # CORREÇÃO: nem todas as execuções têm exatamente o mesmo número de rodadas
+    # de leilão ou a mesma duração exata de coleta (algumas se estendem alguns
+    # segundos além do fim nominal do teste). Sem um corte explícito, esses
+    # períodos "extras" (ex.: 930s) acabam sendo calculados a partir de uma
+    # amostra muito menor que o total de execuções, produzindo pontos finais
+    # não representativos. Todo Period acima de duracao_teste_segundos é
+    # descartado antes de qualquer agregação.
+    DURACAO_TESTE_NOMINAL = duracao_teste_segundos
     
     # ==========================================
     # 1. TEMPORAL QoE
@@ -211,6 +220,7 @@ def exportar_dados_temporais_e_graficos(sh, input_dir, cenario_nome):
         df_qoe.loc[is_paused, 'Bitrate_kbps'] = 0
 
     df_qoe['Period'] = (df_qoe['Timestamp_Offset_Seconds'] // 30).astype(int) * 30
+    df_qoe = df_qoe[df_qoe['Period'] <= DURACAO_TESTE_NOMINAL]
     
     df_qoe_mean = df_qoe.groupby(['Period', 'Slice'])[['Bitrate_kbps', 'Buffer_Seconds']].mean().reset_index()
     pivot_bitrate = df_qoe_mean.pivot(index='Period', columns='Slice', values='Bitrate_kbps').add_suffix('_Bitrate')
@@ -234,8 +244,30 @@ def exportar_dados_temporais_e_graficos(sh, input_dir, cenario_nome):
             
         df_auc = pd.concat(lista_auc_formatada, ignore_index=True)
         df_auc['Slice'] = df_auc['Agent'].str.replace('_slice', '')
-        df_auc['Period'] = (df_auc['Offset'] // 30).astype(int) * 30
-        
+
+        # CORREÇÃO: usar o contador lógico de rodadas (Auction_ID) em vez do
+        # Offset derivado do relógio de parede para definir o Period. O Offset
+        # acumula pequenas derivas de timing ao longo de ~30 rodadas por execução
+        # (rede, asyncio.sleep, chamadas ao Kubernetes), fazendo com que a última
+        # rodada de cada execução caia em um bucket de 30s ligeiramente diferente
+        # de execução para execução. Isso faz o período final (e, em menor grau,
+        # outros períodos de borda) ser calculado a partir de uma amostra muito
+        # menor que as 30 execuções, sem qualquer aviso — foi essa a causa da
+        # discrepância no dado da polícia em t=900s no Cenário Cidade Inteligente.
+        df_auc['Auction_ID_Norm'] = df_auc.groupby('Internal_Run_ID')['Auction_ID'].transform(lambda x: x - x.min())
+        df_auc['Period'] = df_auc['Auction_ID_Norm'] * 30
+        df_auc = df_auc[df_auc['Period'] <= DURACAO_TESTE_NOMINAL]
+
+        # Expõe quantas execuções (Internal_Run_ID distintos) contribuíram para
+        # cada (Period, Slice), para que qualquer colapso amostral fique visível
+        # em vez de silencioso.
+        df_auc_count = df_auc.groupby(['Period', 'Slice'])['Internal_Run_ID'].nunique().reset_index(name='N_Execucoes')
+        n_esperado = df_auc['Internal_Run_ID'].nunique()
+        periodos_incompletos = df_auc_count[df_auc_count['N_Execucoes'] < n_esperado]
+        if not periodos_incompletos.empty:
+            print(f"[AVISO] {len(periodos_incompletos)} combinações (Period, Slice) têm menos de {n_esperado} execuções contribuindo — ver 'N_Execucoes' abaixo:")
+            print(periodos_incompletos.to_string(index=False))
+
         df_auc_mean = df_auc.groupby(['Period', 'Slice'])[['Bid_Value', 'BW_Allocated']].mean().reset_index()
         pivot_bid = df_auc_mean.pivot(index='Period', columns='Slice', values='Bid_Value').add_suffix('_Bid')
         pivot_bw = df_auc_mean.pivot(index='Period', columns='Slice', values='BW_Allocated').add_suffix('_BW')
@@ -255,6 +287,7 @@ def exportar_dados_temporais_e_graficos(sh, input_dir, cenario_nome):
             
         df_infra = pd.concat(lista_infra, ignore_index=True)
         df_infra['Period'] = (df_infra['Timestamp_Offset_Seconds'] // 30).astype(int) * 30
+        df_infra = df_infra[df_infra['Period'] <= DURACAO_TESTE_NOMINAL]
         
         colunas_disponiveis = ['UPF_CPU_Cores', 'UPF_Packets_RX', 'UPF_Packets_TX', 'UPF_RX_Kbps', 'UPF_TX_Kbps', 'UE_RX_Kbps', 'UE_TX_Kbps']
         cols_metricas = [c for c in colunas_disponiveis if c in df_infra.columns]
@@ -283,6 +316,7 @@ def exportar_dados_temporais_e_graficos(sh, input_dir, cenario_nome):
         df_evt = pd.read_csv(arq_evt[0])
         df_evt = df_evt[df_evt['Timestamp_Offset_Seconds'] <= 950]
         df_evt['Period'] = (df_evt['Timestamp_Offset_Seconds'] // 30).astype(int) * 30
+        df_evt = df_evt[df_evt['Period'] <= DURACAO_TESTE_NOMINAL]
         df_evt['Event_Mark'] = 1 
         
         # Agrupamos pegando a marcação e juntando as Descrições em texto

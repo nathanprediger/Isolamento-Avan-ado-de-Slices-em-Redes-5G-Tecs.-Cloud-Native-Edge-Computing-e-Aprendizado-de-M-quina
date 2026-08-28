@@ -135,7 +135,7 @@ class ResourceAgent(Agent):
             
             # Collect bids from participants
             print(f"[AUCTION] CFP sent to participants. Awaiting bids...")
-            bids = []
+            bids_dict = {}
             time_limit = 2.0
             start_time = time.time()
 
@@ -146,8 +146,9 @@ class ResourceAgent(Agent):
                 msg = await self.receive(timeout=time_remaining)
                 if msg and msg.get_metadata("performative") == "propose":
                     print(f"[AUCTION] Received bid from {msg.sender}: {msg.body}")
-                    bids.append(msg)
+                    bids_dict[str(msg.sender)] = msg
 
+            bids = list(bids_dict.values())
             print(f"[AUCTION] Auction #{self.auction_id} ended. Total bids received: {len(bids)}")
 
             if not bids:
