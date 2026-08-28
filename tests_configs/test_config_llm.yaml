@@ -1,0 +1,142 @@
+# ============================================================
+# CONFIGURAÇÃO CENTRALIZADA DO TESTE 5G NETWORK SLICING
+# ============================================================
+
+# Metadados do teste
+test_metadata:
+  name: "teste_prioridade_dinamica_v1"
+  description: "Teste de mudança de prioridade com pausa de tráfego em slices prioritários"
+  timestamp: "2026-06-03"
+  duration_seconds: 900  # 15 minutos total
+
+# Parâmetros iniciais dos slices (Sincronizado com slice_agents.py)
+initial_parameters:
+  cpu: 0.2
+  memory: 512.0
+  bandwidth: 10.0
+slices:
+  policia:
+    initial_priority: 5.0
+    upf: "upf1"
+    slice_id: "000001"
+    dnn: "slice01"
+    client_pod: "ue-video-01"
+  bombeiros:
+    initial_priority: 5.0
+    upf: "upf2"
+    slice_id: "000002"
+    dnn: "slice02"
+    client_pod: "ue-video-03"
+  ambulancia:
+    initial_priority: 5.0
+    upf: "upf3"
+    slice_id: "000003"
+    dnn: "slice03"
+    client_pod: "ue-video-05"
+
+
+# Parâmetros do leilão (Sincronizado com resource_agent.py)
+auction:
+  period_seconds: 30          # Período original do AuctioneerBehavior
+  minimum_cpu: 0.01           # MINIMUM_CPU do resource_agent.py
+  minimum_bw: 1.0             # MINIMUM_BW do resource_agent.py
+  minimum_memory: 64          # MINIMUM_MEMORY do resource_agent.py
+  total_cpu_pool: 0.8        # CORE_CPU_LIMIT real do servidor
+  total_bw_pool: 35          # CORE_BW_LIMIT real do servidor
+  total_memory_pool: 2048      # CORE_MEMORY_LIMIT real do servidor
+  monitoring_period_seconds: 20  # Período de monitoramento para coleta de métricas
+
+# Parâmetros de bidding dos slice agents (Sincronizado com slice_agents.py)
+bidding:
+  base_budget: 20.0
+  base_income: 2.0
+  base_bid: 10.0
+  high_stress_threshold: 0.6
+  moderate_stress_threshold: 0.4
+  comfortable_threshold: 0.2
+  # Coeficientes de incremento de recursos em HIGH STRESS
+  high_stress_coeff_max: 1.0
+  high_stress_coeff_min: 0.2
+  # Coeficientes de incremento de recursos em MODERATE STRESS
+  moderate_stress_coeff_max: 0.5
+  moderate_stress_coeff_min: 0.1
+  # Coeficientes de incremento de recursos em COMFORTABLE
+  comfortable_coeff_max: 0.15
+  comfortable_coeff_min: 0.0
+  
+
+Eventos do teste: quando mudar prioridades, pausar/resumir tráfego
+events:
+  - timestamp: 180
+    type: "priority_change"
+    description: "Incêndio detectado. Drones dos bombeiros ativados. Aumente a prioridade para garantir boa qualidade e baixa latência."
+    changes:
+      policia: 5.0
+      bombeiros: 9.0
+      ambulancia: 5.0
+
+  - timestamp: 420
+    type: "priority_change"
+    description: "Perseguição policial iniciada a suspeitos de roubo, aumentar a prioridade para possibilitar comunicação de vídeo em tempo real."
+    changes:
+      policia: 9.0
+      bombeiros: 9.0
+      ambulancia: 5.0
+
+  - timestamp: 600
+    type: "priority_change"
+    description: "Vítimas resgatadas e incêndio extinto. Necessidade de telemetria médica em tempo real. Ambulância recebe prioridade máxima e bombeiros retornam à prioridade padrão."
+    changes:
+      policia: 9.0
+      bombeiros: 5.0
+      ambulancia: 10.0
+
+  - timestamp: 700
+    type: "priority_change"
+    description: "Suspeitos detidos. Prioridades da polícia deve retornar ao normal."
+    changes:
+      policia: 5.0
+      bombeiros: 5.0
+      ambulancia: 10.0
+
+  # - timestamp: 800
+  #   type: "priority_change"
+  #   description: "Suspeitos detidos. Prioridade da polícia retorna ao normal."
+  #   changes:
+  #     policia: 5.0
+  #     bombeiros: 5.0
+  #     ambulancia: 10.0
+
+
+
+
+# Clientes DASH a serem deployados (um por slice)
+dash_clients:
+  policia:
+    count: 1
+    start_id: 1
+    session_duration: 900
+  bombeiros:
+    count: 1
+    start_id: 2
+    session_duration: 900
+  ambulancia:
+    count: 1
+    start_id: 3
+    session_duration: 900
+
+# Monitoring e coleta
+monitoring:
+  prometheus_url: "http://localhost:35235/"
+  prometheus_interval_seconds: 5
+  kubectl_logs_interval_seconds: 5
+  csv_output_dir: "../metricas_scripts/resultados/cidade_inteligente_3/teste30/"
+  auction_log_file: "auction_history.csv"
+  event_log_file: "test_events.csv"
+  timeseries_log_file: "qoe_timeseries.csv"
+
+# Google Sheets (para saída final)
+google_sheets:
+  enabled: true
+  spreadsheet_name: "Relatorio_Testes_5G_Dinamico"
+  credentials_file: "credentials.json"
